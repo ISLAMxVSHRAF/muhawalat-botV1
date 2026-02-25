@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>محاولات — بروفايلي</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --orange:#F15946; --yellow:#F9C22E;
+  --black:#080808; --card:rgba(20,20,20,.9); --card2:#1e1e1e;
+  --border:rgba(255,255,255,.07); --text:#EEEEEE; --muted:#666;
+  --green:#3ECF8E; --red:#F04747;
+  --glass-bg:rgba(255,255,255,.04); --glass-border:rgba(255,255,255,.09);
+  --glass-blur:blur(20px);
+  --glow-o:0 0 40px rgba(241,89,70,.2); --glow-y:0 0 30px rgba(249,194,46,.15);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{font-family:'IBM Plex Sans Arabic',sans-serif;background:var(--black);color:var(--text);min-height:100vh;overflow-x:hidden;}
+
+/* NOISE */
+body::before{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.04'/%3E%3C/svg%3E");pointer-events:none;z-index:0;}
+
+/* AMBIENT */
+.amb{position:fixed;border-radius:50%;filter:blur(130px);pointer-events:none;z-index:0;}
+.amb-1{width:600px;height:600px;background:rgba(241,89,70,.07);top:-200px;right:-200px;animation:drift 15s ease-in-out infinite alternate;}
+.amb-2{width:500px;height:500px;background:rgba(249,194,46,.05);bottom:5%;left:-150px;animation:drift 20s ease-in-out infinite alternate-reverse;}
+@keyframes drift{from{transform:translate(0,0)}to{transform:translate(50px,60px)}}
+
+/* ── INVALID / LOADING ───────────────────────── */
+#loading-screen,#invalid-screen{
+  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  flex-direction:column;gap:16px;background:var(--black);z-index:100;
+}
+.spinner{width:28px;height:28px;border:3px solid rgba(255,255,255,.08);border-top-color:var(--orange);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.load-logo{width:48px;height:48px;background:var(--orange);border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:var(--glow-o);animation:pulse 2s ease-in-out infinite;}
+@keyframes pulse{0%,100%{box-shadow:0 0 20px rgba(241,89,70,.4)}50%{box-shadow:0 0 50px rgba(241,89,70,.7)}}
+
+/* ── HEADER ──────────────────────────────────── */
+header{
+  position:sticky;top:0;
+  background:rgba(8,8,8,.75);backdrop-filter:var(--glass-blur);
+  border-bottom:1px solid var(--glass-border);
+  padding:0 24px;height:58px;
+  display:flex;align-items:center;justify-content:space-between;
+  z-index:50;
+}
+.h-logo{display:flex;align-items:center;gap:10px;}
+.h-icon{width:30px;height:30px;background:var(--orange);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:var(--glow-o);}
+.h-name{font-size:16px;font-weight:700;letter-spacing:-.3px;}
+.tab-bar{display:flex;gap:4px;}
+.tab{
+  padding:7px 15px;border-radius:8px;font-size:12px;font-weight:600;
+  cursor:pointer;border:none;background:transparent;color:var(--muted);
+  font-family:inherit;transition:all .2s;
+}
+.tab.active{background:var(--glass-bg);backdrop-filter:var(--glass-blur);color:var(--text);border:1px solid var(--glass-border);}
+.tab:hover:not(.active){color:var(--text);}
+
+/* ── MAIN ────────────────────────────────────── */
+#app{display:none;max-width:720px;margin:0 auto;padding:24px 16px 80px;position:relative;z-index:1;}
+
+/* ── PROFILE HERO ────────────────────────────── */
+.hero-card{
+  background:var(--glass-bg);backdrop-filter:var(--glass-blur);
+  border:1px solid var(--glass-border);border-radius:24px;
+  padding:28px;margin-bottom:16px;position:relative;overflow:hidden;
+  animation:fadeUp .5s ease both;
+}
+.hero-card::before{
+  content:'';position:absolute;top:0;right:0;left:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.15),transparent);
+}
+.hero-card::after{
+  content:'';position:absolute;top:0;right:0;left:0;height:3px;
+  background:linear-gradient(90deg,var(--orange),var(--yellow));
+  opacity:.8;
+}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+
+.hero-top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;}
+.hero-avatar{
+  width:64px;height:64px;
+  background:rgba(241,89,70,.12);
+  border:1.5px solid rgba(241,89,70,.35);
+  border-radius:18px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:28px;font-weight:700;color:var(--orange);flex-shrink:0;
+  box-shadow:0 0 30px rgba(241,89,70,.2);
+  animation:pulse 4s ease-in-out infinite;
+}
+.hero-info{flex:1;}
+.hero-name{font-size:22px;font-weight:700;letter-spacing:-.5px;margin-bottom:6px;}
+.rank-pill{
+  display:inline-flex;align-items:center;gap:6px;
+  background:rgba(249,194,46,.1);border:1px solid rgba(249,194,46,.25);
+  color:var(--yellow);font-size:12px;padding:4px 12px;border-radius:100px;
+  box-shadow:var(--glow-y);
+}
+
+.goal-strip{
+  font-size:13px;color:var(--muted);line-height:1.7;
+  border-right:3px solid var(--orange);padding-right:14px;
+  margin-top:16px;
+  background:rgba(241,89,70,.04);border-radius:0 8px 8px 0;
+  padding:10px 14px;
+}
+
+.hero-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:20px;}
+.hst{
+  background:rgba(255,255,255,.04);border:1px solid var(--glass-border);
+  border-radius:12px;padding:12px 10px;text-align:center;transition:all .3s;
+}
+.hst:hover{border-color:rgba(241,89,70,.25);box-shadow:0 4px 20px rgba(241,89,70,.1);}
+.hst-num{font-size:22px;font-weight:700;color:var(--orange);}
+.hst-lbl{font-size:10px;color:var(--muted);margin-top:4px;}
+
+/* ── SECTION ─────────────────────────────────── */
+.section{
+  background:var(--glass-bg);backdrop-filter:var(--glass-blur);
+  border:1px solid var(--glass-border);border-radius:18px;
+  overflow:hidden;margin-bottom:14px;
+  position:relative;transition:all .3s;
+  animation:fadeUp .5s ease both;
+}
+.section::before{content:'';position:absolute;top:0;right:0;left:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.1),transparent);}
+.section-hd{display:flex;align-items:center;justify-content:space-between;padding:15px 20px;border-bottom:1px solid var(--glass-border);}
+.section-title{font-size:14px;font-weight:700;}
+.section-body{padding:16px 20px;}
+
+/* ── PROGRESS ────────────────────────────────── */
+.prog-wrap{margin-bottom:4px;}
+.prog-lbl{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:8px;}
+.prog-track{height:7px;background:rgba(255,255,255,.06);border-radius:100px;overflow:hidden;}
+.prog-fill{
+  height:100%;border-radius:100px;
+  background:linear-gradient(90deg,var(--orange),var(--yellow));
+  transition:width 1.2s cubic-bezier(.34,1.56,.64,1);
+  box-shadow:0 0 12px rgba(241,89,70,.4);
+}
+
+/* ── HABITS ──────────────────────────────────── */
+.habit-item{
+  display:flex;align-items:center;gap:12px;
+  padding:12px 20px;border-bottom:1px solid rgba(255,255,255,.04);
+  transition:background .15s;
+}
+.habit-item:last-child{border-bottom:none;}
+.habit-item:hover{background:rgba(255,255,255,.02);}
+.habit-check{
+  width:24px;height:24px;border-radius:7px;border:1.5px solid rgba(255,255,255,.15);
+  display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;
+  transition:all .3s;
+}
+.habit-check.done{background:var(--green);border-color:var(--green);box-shadow:0 0 12px rgba(62,207,142,.4);}
+.habit-name{font-size:14px;flex:1;transition:all .3s;}
+.habit-name.done{text-decoration:line-through;color:var(--muted);}
+
+/* ── WEEKLY CHART ────────────────────────────── */
+.chart{display:flex;align-items:flex-end;gap:8px;height:100px;}
+.chart-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;}
+.chart-bar-wrap{flex:1;width:100%;display:flex;align-items:flex-end;}
+.chart-bar{
+  width:100%;border-radius:7px 7px 0 0;
+  background:rgba(255,255,255,.05);min-height:4px;
+  transition:height .9s cubic-bezier(.34,1.56,.64,1);
+  position:relative;overflow:hidden;
+}
+.chart-bar.active{background:linear-gradient(180deg,var(--yellow),var(--orange));}
+.chart-bar.active::after{content:'';position:absolute;inset:0;background:linear-gradient(to bottom,rgba(255,255,255,.15),transparent);}
+.chart-bar.today{background:var(--orange);box-shadow:0 0 16px rgba(241,89,70,.5);}
+.chart-lbl{font-size:10px;color:var(--muted);}
+
+/* ── ACHIEVEMENTS ────────────────────────────── */
+.ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;}
+.ach-card{
+  background:rgba(255,255,255,.03);border:1px solid var(--glass-border);
+  border-radius:14px;padding:16px 12px;text-align:center;transition:all .3s;
+}
+.ach-card.earned{
+  border-color:rgba(249,194,46,.35);background:rgba(249,194,46,.06);
+  box-shadow:0 0 20px rgba(249,194,46,.1);
+}
+.ach-card.locked{opacity:.35;filter:grayscale(.5);}
+.ach-icon{font-size:26px;margin-bottom:7px;display:block;filter:drop-shadow(0 0 6px rgba(249,194,46,.3));}
+.ach-name{font-size:12px;font-weight:700;margin-bottom:3px;}
+.ach-desc{font-size:10px;color:var(--muted);}
+
+/* ── LEADERBOARD ─────────────────────────────── */
+.lb-row{
+  display:flex;align-items:center;gap:12px;
+  padding:12px 20px;border-bottom:1px solid rgba(255,255,255,.04);transition:background .15s;
+}
+.lb-row:last-child{border-bottom:none;}
+.lb-row:hover{background:rgba(255,255,255,.02);}
+.lb-row.me{
+  background:rgba(241,89,70,.06);
+  border-right:3px solid var(--orange);
+  box-shadow:inset 0 0 30px rgba(241,89,70,.05);
+}
+.lb-rank{font-size:16px;font-weight:700;width:28px;text-align:center;}
+.lb-name{flex:1;font-size:13px;font-weight:600;}
+.lb-streak{font-size:11px;color:var(--muted);}
+.lb-rate{font-size:18px;font-weight:700;color:var(--orange);}
+
+/* ── GOAL BANNER ─────────────────────────────── */
+.goal-banner{
+  background:rgba(249,194,46,.07);border:1px solid rgba(249,194,46,.2);
+  border-radius:12px;padding:16px 18px;font-size:14px;line-height:1.8;
+  box-shadow:var(--glow-y);
+}
+
+/* ── TABS ────────────────────────────────────── */
+.tab-page{display:none;}
+.tab-page.active{display:block;animation:fadeUp .35s ease both;}
+
+/* ── EMPTY & LOADING ─────────────────────────── */
+.empty{text-align:center;padding:36px;color:var(--muted);font-size:14px;}
+
+@media(max-width:500px){
+  .hero-stats{grid-template-columns:1fr 1fr;}
+  .tab-bar{overflow-x:auto;gap:2px;}
+  .tab{padding:7px 11px;font-size:11px;white-space:nowrap;}
+}
+::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:rgba(241,89,70,.3);border-radius:10px;}
+</style>
+</head>
+<body>
+
+<div class="amb amb-1"></div>
+<div class="amb amb-2"></div>
+
+<!-- LOADING -->
+<div id="loading-screen">
+  <div class="load-logo">✳️</div>
+  <div class="spinner"></div>
+  <div style="font-size:13px;color:var(--muted)">جاري تحميل بروفايلك...</div>
+</div>
+
+<!-- INVALID -->
+<div id="invalid-screen" style="display:none">
+  <div style="font-size:52px">⏰</div>
+  <div style="font-size:20px;font-weight:700">انتهت صلاحية الرابط</div>
+  <div style="font-size:13px;color:var(--muted);text-align:center;max-width:280px;line-height:1.7">الرابط صالح 24 ساعة فقط.<br>اطلب رابطاً جديداً من الأدمن.</div>
+</div>
+
+<!-- HEADER -->
+<header>
+  <div class="h-logo">
+    <div class="h-icon">✳️</div>
+    <div class="h-name">محاولات</div>
+  </div>
+  <div class="tab-bar">
+    <button class="tab active" onclick="showTab('home',this)">🏠 الرئيسية</button>
+    <button class="tab" onclick="showTab('stats',this)">📊 إحصائياتي</button>
+    <button class="tab" onclick="showTab('lb',this)">🏆 الليدربورد</button>
+  </div>
+</header>
+
+<!-- APP -->
+<div id="app">
+
+  <!-- HOME -->
+  <div class="tab-page active" id="tab-home">
+    <div class="hero-card">
+      <div class="hero-top">
+        <div class="hero-avatar" id="av-letter">م</div>
+        <div class="hero-info">
+          <div class="hero-name" id="u-name">...</div>
+          <div class="rank-pill" id="u-rank">🌱 بداية الرحلة</div>
+        </div>
+      </div>
+      <div class="goal-strip" id="u-goal">...</div>
+      <div class="hero-stats">
+        <div class="hst"><div class="hst-num" id="s-streak">0</div><div class="hst-lbl">🔥 ستريك</div></div>
+        <div class="hst"><div class="hst-num" id="s-total">0</div><div class="hst-lbl">✅ إجمالي</div></div>
+        <div class="hst"><div class="hst-num" id="s-rate">0%</div><div class="hst-lbl">📈 اليوم</div></div>
+        <div class="hst"><div class="hst-num" id="s-warn" style="color:var(--red)">0</div><div class="hst-lbl">⚠️ إنذارات</div></div>
+      </div>
+    </div>
+
+    <div class="section" style="animation-delay:.1s">
+      <div class="section-hd">
+        <div class="section-title">عاداتي اليوم</div>
+        <div id="h-count" style="font-size:12px;color:var(--muted)"></div>
+      </div>
+      <div class="section-body">
+        <div class="prog-wrap">
+          <div class="prog-lbl"><span>التقدم</span><span id="prog-pct">0%</span></div>
+          <div class="prog-track"><div class="prog-fill" id="prog-fill" style="width:0%"></div></div>
+        </div>
+      </div>
+      <div id="habits-list"></div>
+    </div>
+
+    <div class="section" id="wg-section" style="display:none;animation-delay:.2s">
+      <div class="section-hd"><div class="section-title">🎯 هدف الأسبوع</div></div>
+      <div class="section-body"><div class="goal-banner" id="wg-text"></div></div>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div class="tab-page" id="tab-stats">
+    <div class="section">
+      <div class="section-hd"><div class="section-title">📈 أداء الأسبوع</div></div>
+      <div class="section-body">
+        <div class="chart" id="w-chart"><div class="empty" style="width:100%">لا توجد بيانات بعد</div></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-hd">
+        <div class="section-title">🏅 الإنجازات</div>
+        <div id="ach-count" style="font-size:12px;color:var(--muted)"></div>
+      </div>
+      <div class="section-body"><div class="ach-grid" id="ach-grid"></div></div>
+    </div>
+  </div>
+
+  <!-- LEADERBOARD -->
+  <div class="tab-page" id="tab-lb">
+    <div class="section">
+      <div class="section-hd"><div class="section-title">🏆 لوحة الشرف الأسبوعية</div></div>
+      <div id="lb-list"><div class="empty"><div class="spinner" style="margin:0 auto 8px"></div>جاري التحميل...</div></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API = '';
+const token = new URLSearchParams(location.search).get('token');
+
+const RANKS = [
+  {min:0,  lbl:'🌱 بداية الرحلة'},
+  {min:7,  lbl:'⚡ يبني العادة'},
+  {min:30, lbl:'🦁 محترف الالتزام'},
+  {min:100,lbl:'👑 أسطورة'},
+];
+const ACHS = [
+  {type:'first_day',      icon:'🌱',name:'أول خطوة',       desc:'أكملت أول يوم كامل'},
+  {type:'week_streak',    icon:'🔥',name:'أسبوع كامل',     desc:'7 أيام ستريك'},
+  {type:'month_streak',   icon:'💎',name:'شهر مثابرة',     desc:'30 يوم ستريك'},
+  {type:'century_streak', icon:'👑',name:'مئة يوم',        desc:'100 يوم ستريك'},
+  {type:'century_tasks',  icon:'⚡',name:'100 عادة',       desc:'أنجزت 100 عادة'},
+  {type:'half_k_tasks',   icon:'🚀',name:'500 عادة',       desc:'أنجزت 500 عادة'},
+  {type:'thousand_tasks', icon:'🏆',name:'ألف عادة',       desc:'أنجزت 1000 عادة'},
+];
+
+addEventListener('DOMContentLoaded', async () => {
+  if (!token) return showInvalid();
+  await load();
+});
+
+function showInvalid() {
+  document.getElementById('loading-screen').style.display = 'none';
+  document.getElementById('invalid-screen').style.display = 'flex';
+}
+
+async function load() {
+  try {
+    const r = await fetch(`${API}/api/member/me`, { headers: { 'x-member-token': token } });
+    if (!r.ok) return showInvalid();
+    const d = await r.json();
+
+    renderProfile(d);
+    renderHabits(d.habits, d.rate);
+    renderChart(d.analytics.weeklyReport);
+    renderAch(d.achievements);
+    if (d.weeklyGoal) { document.getElementById('wg-section').style.display='block'; document.getElementById('wg-text').textContent=d.weeklyGoal; }
+
+    document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+
+    loadLB();
+  } catch { showInvalid(); }
+}
+
+function renderProfile({user, analytics, rate}) {
+  const s = analytics.streakDays || 0;
+  const rank = RANKS.filter(r => s >= r.min).pop().lbl;
+  document.getElementById('av-letter').textContent = user.name?.[0] || 'م';
+  document.getElementById('u-name').textContent = user.name;
+  document.getElementById('u-rank').textContent = rank;
+  document.getElementById('u-goal').textContent = user.goal || user.bio || 'لم تحدد هدفاً بعد';
+  document.getElementById('s-streak').textContent = s;
+  document.getElementById('s-total').textContent = user.total_done || 0;
+  document.getElementById('s-rate').textContent = rate + '%';
+  document.getElementById('s-warn').textContent = user.warning_count || 0;
+  document.title = `محاولات — ${user.name}`;
+}
+
+function renderHabits(habits, rate) {
+  const done = habits.filter(h => h.completed).length;
+  document.getElementById('h-count').textContent = `${done} / ${habits.length}`;
+  document.getElementById('prog-pct').textContent = rate + '%';
+  setTimeout(() => { document.getElementById('prog-fill').style.width = rate + '%'; }, 120);
+
+  document.getElementById('habits-list').innerHTML = habits.length
+    ? habits.map(h => `<div class="habit-item">
+        <div class="habit-check ${h.completed?'done':''}">${h.completed?'✓':''}</div>
+        <div class="habit-name ${h.completed?'done':''}">${h.name}</div>
+      </div>`).join('')
+    : '<div class="empty">لا توجد عادات مضافة بعد</div>';
+}
+
+function renderChart(wr) {
+  if (!wr?.length) return;
+  const days = ['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+  const todayIdx = new Date().getDay();
+  const chart = document.getElementById('w-chart');
+  chart.innerHTML = '';
+  wr.forEach(d => {
+    const rate = Math.round(d.rate);
+    const di = new Date(d.date).getDay();
+    const isToday = di === todayIdx;
+    const h = Math.max(rate, 4);
+    const pctColor = rate>=70?'var(--green)':rate>=40?'var(--yellow)':'var(--muted)';
+    const col = document.createElement('div');
+    col.className = 'chart-col';
+    col.innerHTML = `<div style="font-size:10px;color:${pctColor};font-weight:700">${rate}%</div>
+      <div class="chart-bar-wrap"><div class="chart-bar ${isToday?'today':'active'}" style="height:${h}%"></div></div>
+      <div class="chart-lbl">${days[di].slice(0,3)}</div>`;
+    chart.appendChild(col);
+  });
+}
+
+function renderAch(earned) {
+  const et = new Set(earned.map(a => a.type));
+  document.getElementById('ach-count').textContent = `${et.size} / ${ACHS.length}`;
+  document.getElementById('ach-grid').innerHTML = ACHS.map(a => `
+    <div class="ach-card ${et.has(a.type)?'earned':'locked'}">
+      <span class="ach-icon">${a.icon}</span>
+      <div class="ach-name">${a.name}</div>
+      <div class="ach-desc">${a.desc}</div>
+    </div>`).join('');
+}
+
+async function loadLB() {
+  try {
+    const r = await fetch(`${API}/api/member/leaderboard`, { headers: { 'x-member-token': token } });
+    const d = await r.json();
+    const m = ['🥇','🥈','🥉'];
+    document.getElementById('lb-list').innerHTML = d.map((l,i) => `
+      <div class="lb-row ${l.isMe?'me':''}">
+        <div class="lb-rank">${m[i]||i+1}</div>
+        <div><div class="lb-name">${l.name}${l.isMe?' <span style="color:var(--orange);font-size:10px">(أنت)</span>':''}</div><div class="lb-streak">🔥 ${l.streak} يوم</div></div>
+        <div class="lb-rate">${l.avgRate}%</div>
+      </div>`).join('');
+  } catch {}
+}
+
+function showTab(name, btn) {
+  document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(`tab-${name}`).classList.add('active');
+  btn.classList.add('active');
+}
+</script>
+</body>
+</html>

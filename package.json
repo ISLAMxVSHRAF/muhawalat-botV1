@@ -1,0 +1,20 @@
+{
+  "name": "muhawalat-bot",
+  "version": "7.2.0",
+  "description": "بوت محاولات للعادات اليومية + Web Dashboard",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "pm2": "pm2 start index.js --name muhawalat",
+    "pm2:logs": "pm2 logs muhawalat",
+    "pm2:stop": "pm2 stop muhawalat"
+  },
+  "dependencies": {
+    "discord.js": "^14.0.0",
+    "dotenv": "^16.0.0",
+    "express": "^4.22.1",
+    "node-cron": "^3.0.0",
+    "sql.js": "^1.10.0"
+  }
+}

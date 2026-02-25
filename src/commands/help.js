@@ -1,0 +1,219 @@
+// ==========================================
+// 📖 HELP — Slash Command (Paginated)
+// ==========================================
+
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const CONFIG = require('../config');
+
+const ERR = CONFIG.ADMIN?.unifiedErrorMessage || '❌ حدث خطأ داخلي.';
+
+// ✅ FIX: 4 صفحات — إعادة هيكلة شاملة لتغطية جميع الأنظمة
+function getPages(base) {
+    return [
+        // ==========================================
+        // 📄 صفحة 1 — الأساسيات والإعداد
+        // ==========================================
+        new EmbedBuilder()
+            .setColor(CONFIG.COLORS.primary)
+            .setTitle('🛠️ أوامر الأدمن — محاولات | صفحة 1/4')
+            .setDescription(`**🌐 الموقع:** [لوحة الأدمن](${base}/admin.html)`)
+            .addFields(
+                {
+                    name: '🚀 الإعداد',
+                    value: '`/setup` — يفتح قائمة إعداد البوت (تلقائي / مخصص / ربط يدوي)',
+                    inline: false
+                },
+                {
+                    name: '👤 إدارة الأعضاء',
+                    value: [
+                        '`/register_members` — يسجل كل الأعضاء ذوي رول الميمبر في الداتابيز',
+                        '`/recreate_dashboard user:` — يعيد بناء الداشبورد لعضو',
+                        '`/create_thread user:` — ينشئ مساحة جديدة لعضو بدون مساحة',
+                    ].join('\n'),
+                    inline: false
+                },
+            )
+            .setFooter({ text: 'صفحة 1 من 4 — استخدم الأزرار للتنقل' }),
+
+        // ==========================================
+        // 📄 صفحة 2 — التقارير والمهام
+        // ==========================================
+        new EmbedBuilder()
+            .setColor(CONFIG.COLORS.warning)
+            .setTitle('🛠️ أوامر الأدمن — محاولات | صفحة 2/4')
+            .addFields(
+                {
+                    name: '📝 التقارير اليومية',
+                    value: [
+                        '`/daily_done` — يعرض من كتب تقريره النهاردة',
+                        '`/daily_missing` — يعرض من لم يكتب تقريره بعد',
+                        '`/sync_reports thread_id: date:` — يزامن تقارير من Thread بتاريخ معين',
+                    ].join('\n'),
+                    inline: false
+                },
+                {
+                    name: '📌 المهام',
+                    value: [
+                        '`/task_create type: title: description:` — ينشئ مهمة أسبوعية أو شهرية',
+                        '   ↳ أسبوعية تقفل بعد 48 ساعة | شهرية بعد 5 أيام',
+                        '   ↳ العضو يسجل بكتابة رسالة فوق 10 كلمات (حد أقصى مرتين)',
+                        '`/task_list` — يعرض المهام النشطة وموعد قفلها',
+                        '`/sync_tasks type: thread_id:` — يزامن إتمام مهمة من Thread موجود',
+                    ].join('\n'),
+                    inline: false
+                },
+            )
+            .setFooter({ text: 'صفحة 2 من 4 — استخدم الأزرار للتنقل' }),
+
+        // ==========================================
+        // 📄 صفحة 3 — التحديات والإنذارات
+        // ==========================================
+        new EmbedBuilder()
+            .setColor(CONFIG.COLORS.success)
+            .setTitle('🛠️ أوامر الأدمن — محاولات | صفحة 3/4')
+            .addFields(
+                {
+                    name: '🏆 التحديات',
+                    value: [
+                        '`/challenge_create title: content: duration: challenge_time: min_minutes: bonus_minutes: [image:]`',
+                        '   ↳ ينشئ تحدي في قناة التحديات تلقائياً',
+                        '   ↳ العضو يسجل بكتابة ✅ + الوقت — مثال: `تم ✅ - 30 دقيقة`',
+                        '   ↳ التحدي يقفل ويعلن الفائزين تلقائياً عند انتهاء وقته',
+                        '`/challenge_stats id:` — إحصائيات التحدي + ليدربورد كامل بصفحات',
+                        '`/challenge_end id:` — ينهي التحدي يدوياً ويعلن الفائزين',
+                    ].join('\n'),
+                    inline: false
+                },
+                {
+                    name: '⚠️ الإنذارات',
+                    value: [
+                        '`/warn user: [reason:]` — يعطي إنذار يدوي مع السبب',
+                        '`/remove_warn user:` — يرفع إنذار واحد عن عضو',
+                        '`/clear_warns user:` — يمسح كل إنذارات عضو',
+                        '`/warnings user:` — يعرض سجل إنذارات عضو',
+                        '`/warnings_all` — يعرض كل الأعضاء ذوي الإنذارات',
+                        '`/timeout_list` — يعرض الأعضاء اللي وصلوا 3 إنذارات',
+                    ].join('\n'),
+                    inline: false
+                },
+            )
+            .setFooter({ text: 'صفحة 3 من 4 — استخدم الأزرار للتنقل' }),
+
+        // ==========================================
+        // 📄 صفحة 4 — الأتمتة والجدولة والصيانة
+        // ==========================================
+        new EmbedBuilder()
+            .setColor(CONFIG.COLORS.info || CONFIG.COLORS.primary)
+            .setTitle('🛠️ أوامر الأدمن — محاولات | صفحة 4/4')
+            .addFields(
+                {
+                    name: '🤖 الردود التلقائية',
+                    value: [
+                        '`/autorespond_add trigger: response:` — يضيف رد تلقائي',
+                        '`/autorespond_list` — يعرض كل الردود وحالتها',
+                        '`/autorespond_toggle id:` — يفعّل أو يوقف رد',
+                        '`/autorespond_delete id:` — يحذف رد تلقائي',
+                    ].join('\n'),
+                    inline: false
+                },
+                {
+                    name: '📅 الجدولة',
+                    value: [
+                        '`/schedule_add channel: time: content:` — يضيف رسالة مجدولة (يومي/أسبوعي/مرة)',
+                        '`/schedule_list` — يعرض الرسائل المجدولة وحالتها',
+                        '`/schedule_pause id:` — يوقف رسالة مؤقتاً',
+                        '`/schedule_resume id:` — يستأنف رسالة موقوفة',
+                        '`/schedule_delete id:` — يحذف رسالة مجدولة',
+                    ].join('\n'),
+                    inline: false
+                },
+                {
+                    name: '🧪 أوامر الاختبار',
+                    value: [
+                        '`/test_morning` — رسالة الصباح فوراً',
+                        '`/test_evening` — محاسبة المساء فوراً',
+                        '`/test_reset` — التصفير اليومي فوراً',
+                        '`/test_weekly` — لوحة الشرف فوراً',
+                        '`/test_daily` — ينشئ بوست التقرير اليومي فوراً',
+                        '`/test_lock_daily` — يقفل بوست التقرير السابق',
+                        '`/test_lock_tasks` — يقفل التاسكات المنتهية + إشعار للناقصين',
+                        '`/test_warnings` — فحص الإنذارات الأسبوعي فوراً',
+                        '`/test_challenges` — فحص التحديات المنتهية فوراً',
+                        '`/test_monthly` — تذكير أهداف الشهر فوراً',
+                    ].join('\n'),
+                    inline: false
+                },
+                {
+                    name: '📊 الصيانة',
+                    value: [
+                        '`/debug_status` — حالة البوت (أعضاء / uptime / تقارير اليوم)',
+                        '`/db_backup` — نسخة احتياطية من قاعدة البيانات',
+                    ].join('\n'),
+                    inline: false
+                },
+            )
+            .setFooter({ text: 'صفحة 4 من 4 | محاولات • Slash Commands' }),
+    ];
+}
+
+// ✅ FIX: تحديث getRow لاستيعاب 4 صفحات (التغيير تلقائي عبر total)
+function getRow(page, total) {
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`help_prev_${page}`)
+            .setLabel('◀ السابق')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(page === 0),
+        new ButtonBuilder()
+            .setCustomId(`help_page_${page}`)
+            .setLabel(`${page + 1} / ${total}`)
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(true),
+        new ButtonBuilder()
+            .setCustomId(`help_next_${page}`)
+            .setLabel('التالي ▶')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(page === total - 1)
+    );
+}
+
+const data = new SlashCommandBuilder()
+    .setName('help')
+    .setDescription('عرض كل أوامر الأدمن مع شرح كل أمر')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
+
+async function execute(interaction) {
+    try {
+        const base = process.env.WEB_BASE_URL || `http://localhost:${process.env.WEB_PORT || 3000}`;
+        const pages = getPages(base);
+        await interaction.reply({
+            embeds: [pages[0]],
+            components: [getRow(0, pages.length)],
+            ephemeral: true
+        });
+    } catch (e) {
+        console.error('❌ help:', e);
+        await interaction.reply({ content: ERR, ephemeral: true }).catch(() => {});
+    }
+}
+
+async function handleHelpButton(interaction) {
+    try {
+        const base = process.env.WEB_BASE_URL || `http://localhost:${process.env.WEB_PORT || 3000}`;
+        const pages = getPages(base);
+        const id = interaction.customId;
+
+        let page = parseInt(id.split('_')[2]);
+        if (id.startsWith('help_next_')) page = Math.min(page + 1, pages.length - 1);
+        if (id.startsWith('help_prev_')) page = Math.max(page - 1, 0);
+
+        await interaction.update({
+            embeds: [pages[page]],
+            components: [getRow(page, pages.length)]
+        });
+    } catch (e) {
+        console.error('❌ help button:', e);
+    }
+}
+
+module.exports = { data, execute, handleHelpButton };

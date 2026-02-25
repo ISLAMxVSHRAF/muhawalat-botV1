@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>محاولات</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@100;200;300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:     #0C090D;
+  --slate:  #7286A0;
+  --tomato: #F15946;
+  --sun:    #F9C22E;
+  --cream:  #FBFEFB;
+  --border: rgba(251,254,251,.08);
+  --muted:  rgba(251,254,251,.28);
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+
+/* ══ التعديل الأساسي لحل مشكلة السكرول ══ */
+html {
+  scroll-behavior: smooth;
+}
+
+::-webkit-scrollbar { 
+  display: none; 
+}
+
+body {
+  font-family: 'IBM Plex Sans Arabic', sans-serif;
+  background: var(--bg); 
+  color: var(--cream);
+  overflow-x: hidden; /* السكرول العرضي يتمنع هنا بس */
+  cursor: none;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+body::after{
+  content:''; position:fixed; inset:0; z-index:9000; pointer-events:none; opacity:.03;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ══════════════════════════════════════
+   LOADER
+══════════════════════════════════════ */
+#loader{
+  position:fixed; inset:0; z-index:99999;
+  background:var(--bg);
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:32px;
+  transition:opacity .5s, visibility .5s;
+}
+#loader.hidden{ opacity:0; visibility:hidden; }
+
+.loader-logo{
+  font-size:48px; font-weight:900; letter-spacing:-3px;
+  opacity:0; animation:loaderFadeIn .5s .1s forwards;
+}
+.loader-logo span{ color:var(--tomato); }
+
+.loader-bar-wrap{
+  width:180px; height:2px;
+  background:rgba(255,255,255,.08); border-radius:2px; overflow:hidden;
+  opacity:0; animation:loaderFadeIn .4s .3s forwards;
+}
+.loader-bar{
+  height:100%;
+  background:linear-gradient(90deg, var(--tomato), var(--sun));
+  border-radius:2px;
+  animation:loaderFill 1.4s .4s cubic-bezier(.4,0,.2,1) forwards;
+  width:0;
+}
+@keyframes loaderFill{ to{width:100%} }
+
+.loader-text{
+  font-size:10px; font-weight:600; letter-spacing:2.5px;
+  text-transform:uppercase; color:var(--muted);
+  opacity:0; animation:loaderFadeIn .4s .5s forwards;
+}
+@keyframes loaderFadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ══════════════════════════════════════
+   SCROLL PROGRESS BAR
+══════════════════════════════════════ */
+#scroll-progress{
+  position:fixed; top:0; left:0; right:0; z-index:99998;
+  height:2px; background:transparent; pointer-events:none;
+}
+#scroll-fill{
+  height:100%;
+  background:linear-gradient(90deg, var(--tomato), var(--sun));
+  width:0%; transition:width .05s linear;
+  box-shadow:0 0 8px rgba(241,89,70,.6);
+}
+
+/* ══════════════════════════════════════
+   TOAST NOTIFICATIONS
+══════════════════════════════════════ */
+#toast-container{
+  position:fixed; bottom:32px; left:32px; z-index:9500;
+  display:flex; flex-direction:column; gap:10px;
+  pointer-events:none;
+}
+.toast{
+  display:flex; align-items:center; gap:12px;
+  padding:12px 18px;
+  background:rgba(20,17,22,.95);
+  border:1px solid var(--border);
+  border-radius:10px;
+  backdrop-filter:blur(20px);
+  min-width:240px; max-width:300px;
+  box-shadow:0 8px 32px rgba(0,0,0,.5);
+  transform:translateX(-120%); opacity:0;
+  transition:transform .4s cubic-bezier(.34,1.56,.64,1), opacity .4s;
+  pointer-events:auto;
+}
+.toast.show{ transform:translateX(0); opacity:1; }
+.toast.hide{ transform:translateX(-120%); opacity:0; transition:transform .3s ease-in, opacity .3s; }
+
+.toast-dot{
+  width:8px; height:8px; border-radius:50%; flex-shrink:0;
+  background:var(--tomato);
+  box-shadow:0 0 8px var(--tomato);
+  animation:livepulse 2s infinite;
+}
+.toast-body{ flex:1; }
+.toast-name{ font-size:12px; font-weight:700; color:var(--cream); margin-bottom:2px; }
+.toast-msg { font-size:11px; color:var(--muted); font-weight:400; }
+.toast-time{ font-size:9px; color:rgba(255,255,255,.2); flex-shrink:0; }
+
+/* ══════════════════════════════════════
+   CANVAS
+══════════════════════════════════════ */
+#bg-canvas{ position:fixed; inset:0; z-index:0; pointer-events:none; }
+
+/* ══════════════════════════════════════
+   CURSOR
+══════════════════════════════════════ */
+.cursor{
+  position:fixed; z-index:9999; pointer-events:none;
+  width:8px; height:8px;
+  background:var(--tomato); border-radius:50%;
+  transform:translate(-50%,-50%);
+  transition:transform .15s;
+  mix-blend-mode:difference;
+}
+.cursor-ring{
+  position:fixed; z-index:9998; pointer-events:none;
+  width:36px; height:36px;
+  border:1px solid rgba(241,89,70,.45); border-radius:50%;
+  transform:translate(-50%,-50%);
+  transition: border-color .3s;
+}
+body:has(a:hover) .cursor     { transform:translate(-50%,-50%) scale(3); }
+body:has(a:hover) .cursor-ring{ border-color:rgba(241,89,70,.12); }
+
+/* ══════════════════════════════════════
+   NAV
+══════════════════════════════════════ */
+nav{
+  position:fixed; top:0; left:0; right:0; z-index:500;
+  background:rgba(12,9,13,.88);
+  backdrop-filter:blur(20px) saturate(180%);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:stretch; height:58px;
+  padding:0 0 0 48px;
+}
+.nav-logo-col{
+  display:flex; align-items:center; gap:10px;
+  border-left:1px solid var(--border);
+  padding:0 32px 0 0; margin-left:auto;
+}
+.nav-logo{ font-size:17px; font-weight:700; letter-spacing:-.4px; }
+.logo-live{
+  display:flex; align-items:center; gap:5px;
+  font-size:9px; font-weight:700; letter-spacing:1.5px;
+  text-transform:uppercase; color:var(--tomato);
+}
+.live-pulse{
+  width:5px; height:5px; background:var(--tomato); border-radius:50%;
+  animation:livepulse 1.8s ease-in-out infinite;
+}
+@keyframes livepulse{
+  0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(241,89,70,.5)}
+  50%{opacity:.6;box-shadow:0 0 0 6px rgba(241,89,70,0)}
+}
+.nav-links{ display:flex; align-items:stretch; }
+.nav-links a{
+  display:flex; align-items:center;
+  padding:0 22px;
+  font-size:12px; font-weight:500; letter-spacing:.3px;
+  color:var(--muted); text-decoration:none;
+  border-right:1px solid var(--border);
+  transition:color .2s, background .2s;
+}
+.nav-links a:hover{ color:var(--cream); background:rgba(255,255,255,.03); }
+.nav-cta{
+  background:var(--tomato)!important; color:var(--cream)!important;
+  font-weight:700!important; padding:0 28px!important;
+  transition:opacity .2s!important;
+}
+.nav-cta:hover{ opacity:.85!important; }
+
+/* ══════════════════════════════════════
+   TICKER
+══════════════════════════════════════ */
+.ticker{
+  position:fixed; top:58px; left:0; right:0; z-index:490;
+  height:38px; border-bottom:1px solid var(--border);
+  background:rgba(12,9,13,.92); backdrop-filter:blur(10px);
+  display:flex; align-items:center; overflow:hidden;
+}
+.ticker-tag{
+  flex-shrink:0; height:100%; display:flex; align-items:center;
+  padding:0 18px; background:var(--tomato);
+  font-size:9px; font-weight:800; letter-spacing:2px;
+  text-transform:uppercase; color:var(--cream); z-index:2;
+}
+.ticker-wrap{ flex:1; overflow:hidden; position:relative; display:flex; }
+.ticker-wrap::before,.ticker-wrap::after{
+  content:''; position:absolute; top:0; bottom:0; width:60px; z-index:1; pointer-events:none;
+}
+.ticker-wrap::before{ right:0; background:linear-gradient(to left,rgba(12,9,13,.9),transparent); }
+.ticker-wrap::after { left:0;  background:linear-gradient(to right,rgba(12,9,13,.9),transparent); }
+
+.ticker-track{
+  display:flex; width:max-content; flex-shrink:0;
+  animation:tickerScroll 30s linear infinite;
+}
+.ticker-track:hover { animation-play-state: paused; cursor: default; }
+@keyframes tickerScroll{ from{transform:translateX(0)} to{transform:translateX(-50%)} }
+
+.ticker-content {
+  display:flex; gap:48px; padding-left:48px;
+  flex-shrink:0;
+}
+.tick-item{
+  display:flex; align-items:center; gap:7px;
+  font-size:11px; color:var(--muted); font-weight:400; white-space:nowrap;
+}
+.tick-item b{ color:var(--cream); font-weight:600; }
+.tick-sep{ color:var(--tomato); font-size:8px; }
+
+/* ══════════════════════════════════════
+   PAGE WRAPPER
+══════════════════════════════════════ */
+.page{ position:relative; z-index:1; padding-top:96px; }
+
+/* ══════════════════════════════════════
+   GRID SYSTEM
+══════════════════════════════════════ */
+.grid-layout  { display:grid; grid-template-columns:56px 1fr;    border-bottom:1px solid var(--border); }
+.grid-layout-3{ display:grid; grid-template-columns:56px 1fr 1fr; border-bottom:1px solid var(--border); }
+.side-col{
+  border-left:1px solid var(--border);
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  padding:16px 0; gap:16px; min-height:100%;
+}
+.side-label{
+  writing-mode:vertical-rl; font-size:8px; font-weight:700;
+  letter-spacing:2.5px; text-transform:uppercase; color:rgba(251,254,251,.2);
+}
+.side-line{ flex:1; width:1px; background:var(--border); }
+.side-dot  { width:5px; height:5px; background:var(--tomato); border-radius:50%; flex-shrink:0; }
+
+/* ══════════════════════════════════════
+   HERO
+══════════════════════════════════════ */
+.hero-main{
+  border-left:1px solid var(--border);
+  padding:64px 56px;
+  display:flex; flex-direction:column; justify-content:space-between;
+  min-height:calc(100dvh - 96px);
+}
+.h-eyebrow{
+  display:flex; align-items:center; gap:10px;
+  font-size:9px; font-weight:700;
+  letter-spacing:2.5px; text-transform:uppercase;
+  color:var(--tomato); margin-bottom:48px;
+  opacity:0; animation:fadeUp .5s .2s forwards;
+}
+.h-eyebrow::before{ content:''; width:20px; height:1px; background:var(--tomato); }
+
+.hero-h1{
+  font-size:clamp(80px, 11vw, 160px); /* تكبير الحجم جداً */
+  font-weight:900;
+  line-height:0.85; /* تضييق المسافة بين السطور */
+  letter-spacing:-6px;
+  flex:1; display:flex; flex-direction:column;
+  justify-content:center; margin-bottom:48px;
+}
+.word-row{ 
+  overflow:hidden; display:block; 
+  padding-bottom: 15px; /* عشان الحروف متتقصش من تحت */
+}
+/* التوزيع المتدرج للكلمات */
+.word-row:nth-child(1) { align-self: flex-start; }
+.word-row:nth-child(2) { align-self: center; }
+.word-row:nth-child(3) { align-self: flex-end; }
+
+.word-inner{
+  display:block; transform:translateY(105%);
+  animation:wordUp .7s cubic-bezier(.16,1,.3,1) forwards;
+}
+.word-row:nth-child(1) .word-inner{ animation-delay:.35s; color:var(--cream); }
+.word-row:nth-child(2) .word-inner{ animation-delay:.5s;  color:var(--tomato); }
+.word-row:nth-child(3) .word-inner{
+  animation-delay:.65s;
+  -webkit-text-stroke:2px var(--cream); color:transparent;
+}
+@keyframes wordUp{ to{transform:translateY(0)} }
+
+.hero-bottom{
+  display:grid; grid-template-columns:1fr auto;
+  gap:32px; align-items:end;
+  opacity:0; animation:fadeUp .6s .9s forwards;
+}
+.hero-desc{ font-size:14px; line-height:1.75; color:var(--muted); font-weight:300; max-width:380px; }
+.hero-btns{ display:flex; flex-direction:column; gap:10px; flex-shrink:0; }
+
+/* ══════════════════════════════════════
+   BUTTONS
+══════════════════════════════════════ */
+.btn{
+  display:inline-flex; align-items:center; gap:8px;
+  padding:14px 28px; font-family:inherit;
+  font-size:12px; font-weight:700; letter-spacing:.4px;
+  text-decoration:none; cursor:none;
+  transition:transform .25s, box-shadow .25s, opacity .25s;
+}
+.btn:hover{ transform:translateY(-2px); }
+.btn-red { background:var(--tomato); color:var(--cream); box-shadow:0 0 30px rgba(241,89,70,.25); }
+.btn-red:hover { box-shadow:0 8px 50px rgba(241,89,70,.45); }
+.btn-line{ background:transparent; color:var(--cream); border:1px solid var(--border); }
+.btn-line:hover{ border-color:rgba(255,255,255,.3); }
+
+/* ══════════════════════════════════════
+   HERO VISUAL PANEL
+══════════════════════════════════════ */
+.hero-visual{
+  background:#0e0b0f; border-left:1px solid var(--border);
+  display:flex; flex-direction:column;
+  position:relative; overflow:hidden;
+}
+.hv-glow{
+  position:absolute; pointer-events:none;
+  border-radius:50%; filter:blur(80px);
+}
+.hv-glow-1{
+  width:400px; height:400px;
+  background:rgba(241,89,70,.1); top:-100px; right:-80px;
+  animation:glowFloat 9s ease-in-out infinite alternate;
+}
+.hv-glow-2{
+  width:300px; height:300px;
+  background:rgba(249,194,46,.07); bottom:-60px; left:-60px;
+  animation:glowFloat 12s ease-in-out infinite alternate-reverse;
+}
+@keyframes glowFloat{
+  from{transform:scale(1) translate(0,0)} to{transform:scale(1.1) translate(20px,-20px)}
+}
+.hv-inner{
+  position:relative; z-index:1;
+  padding:48px 40px; height:100%; display:flex; flex-direction:column;
+}
+.hv-label{
+  font-size:9px; font-weight:700; letter-spacing:2px;
+  text-transform:uppercase; color:var(--tomato); margin-bottom:36px;
+  display:flex; align-items:center; gap:8px;
+}
+.hv-label::after{ content:''; flex:1; height:1px; background:rgba(241,89,70,.2); }
+
+.hv-stat-big{
+  flex:1; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; text-align:center;
+}
+.hv-num{
+  font-size:clamp(80px,10vw,120px); font-weight:900;
+  letter-spacing:-6px; line-height:1; color:var(--tomato);
+  text-shadow:0 0 60px rgba(241,89,70,.4);
+  animation:numPulse 4s ease-in-out infinite;
+}
+@keyframes numPulse{
+  0%,100%{text-shadow:0 0 40px rgba(241,89,70,.3)}
+  50%{text-shadow:0 0 80px rgba(241,89,70,.6)}
+}
+.hv-unit{
+  font-size:10px; font-weight:600; letter-spacing:3px;
+  color:rgba(251,254,251,.2); text-transform:uppercase; margin-top:8px;
+}
+.hv-board{ border-top:1px solid var(--border); padding-top:24px; display:flex; flex-direction:column; gap:12px; }
+.lb-row{
+  display:flex; align-items:center; gap:10px;
+  opacity:0; animation:fadeUp .4s forwards;
+}
+.lb-row:nth-child(1){animation-delay:1.1s}
+.lb-row:nth-child(2){animation-delay:1.25s}
+.lb-row:nth-child(3){animation-delay:1.4s}
+.lb-rank{ font-size:10px; font-weight:700; color:rgba(255,255,255,.2); width:18px; flex-shrink:0; }
+.lb-rank.g{ color:var(--sun); }
+.lb-name{ font-size:12px; color:var(--muted); font-weight:500; min-width:52px; }
+.lb-track{ flex:1; height:3px; background:rgba(255,255,255,.06); border-radius:2px; overflow:hidden; }
+.lb-fill{ height:100%; background:var(--tomato); border-radius:2px; animation:grow 1.2s ease-out forwards; }
+.lb-row:nth-child(2) .lb-fill{ background:var(--slate); animation-delay:.1s; }
+.lb-row:nth-child(3) .lb-fill{ background:var(--tomato); opacity:.6; animation-delay:.2s; }
+.lb-pct{ font-size:10px; color:rgba(255,255,255,.2); min-width:30px; text-align:left; }
+@keyframes grow{ from{width:0} }
+
+/* ══════════════════════════════════════
+   NUMBERS BAR
+══════════════════════════════════════ */
+.numbers-bar{
+  display:grid; grid-template-columns:56px repeat(4,1fr);
+  border-bottom:1px solid var(--border);
+}
+.nb-side{
+  border-left:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center;
+}
+.nb-side span{
+  writing-mode:vertical-rl; font-size:8px; font-weight:700;
+  letter-spacing:2.5px; text-transform:uppercase; color:rgba(251,254,251,.2);
+}
+.nb-item{
+  padding:40px 32px; border-left:1px solid var(--border);
+  position:relative; overflow:hidden; transition:background .3s;
+}
+.nb-item:hover{ background:rgba(255,255,255,.025); }
+.nb-item::before{
+  content:''; position:absolute; top:0; left:0; right:0; height:2px;
+  transform:scaleX(0); transform-origin:right; transition:transform .4s;
+}
+.nb-item:nth-child(2)::before{ background:var(--tomato); }
+.nb-item:nth-child(3)::before{ background:var(--sun); }
+.nb-item:nth-child(4)::before{ background:var(--slate); }
+.nb-item:nth-child(5)::before{ background:var(--tomato); }
+.nb-item:hover::before{ transform:scaleX(1); transform-origin:left; }
+.nb-idx{ font-size:9px; font-weight:700; color:rgba(251,254,251,.2); letter-spacing:1px; margin-bottom:20px; }
+.nb-num{
+  font-size:52px; font-weight:900; letter-spacing:-3px; line-height:1; margin-bottom:8px; transition:color .3s;
+}
+.nb-item:nth-child(2) .nb-num{ color:var(--tomato); }
+.nb-item:nth-child(3) .nb-num{ color:var(--sun); }
+.nb-item:nth-child(4) .nb-num{ color:var(--slate); }
+.nb-item:nth-child(5) .nb-num{ color:var(--tomato); }
+.nb-label{ font-size:11px; color:var(--muted); font-weight:500; }
+
+/* ══════════════════════════════════════
+   HOW IT WORKS
+══════════════════════════════════════ */
+.how-wrap{
+  display:grid; grid-template-columns:56px 1fr;
+  border-bottom:1px solid var(--border);
+}
+.how-body{ border-left:1px solid var(--border); padding:56px; }
+.how-header{
+  display:flex; align-items:baseline; gap:16px;
+  border-bottom:1px solid var(--border);
+  padding-bottom:16px; margin-bottom:56px;
+}
+.how-title{
+  font-size:clamp(28px,3.5vw,48px); font-weight:900;
+  letter-spacing:-2px; line-height:1;
+}
+.how-subtitle{
+  font-size:10px; font-weight:700; color:rgba(251,254,251,.2);
+  letter-spacing:1px; margin-right:auto;
+}
+
+.steps-row{
+  display:grid; grid-template-columns:repeat(4,1fr);
+  gap:0; position:relative;
+}
+/* connecting line */
+.steps-row::before{
+  content:''; position:absolute;
+  top:28px; right:calc(16.66% + 20px); left:calc(16.66% + 20px);
+  height:1px; background:linear-gradient(90deg, var(--tomato), var(--sun), var(--tomato));
+  opacity:.25; pointer-events:none;
+}
+
+.step-item{
+  padding:0 24px 0 0; text-align:right;
+  opacity:0; transform:translateY(20px);
+  transition:opacity .6s, transform .6s;
+}
+.step-item.on{ opacity:1; transform:none; }
+.step-item:nth-child(1){ transition-delay:.0s; }
+.step-item:nth-child(2){ transition-delay:.12s; }
+.step-item:nth-child(3){ transition-delay:.24s; }
+.step-item:nth-child(4){ transition-delay:.36s; }
+.step-item:first-child{ padding-right:0; }
+
+.step-num-wrap{
+  display:flex; align-items:center; gap:12px; margin-bottom:20px;
+}
+.step-circle{
+  width:40px; height:40px; border-radius:50%; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:12px; font-weight:800; letter-spacing:-.5px;
+  border:1px solid var(--border);
+  position:relative; overflow:hidden;
+  transition:border-color .3s, box-shadow .3s;
+}
+.step-item:hover .step-circle{
+  border-color:rgba(241,89,70,.5);
+  box-shadow:0 0 20px rgba(241,89,70,.2);
+}
+.step-circle::before{
+  content:''; position:absolute; inset:0;
+  background:radial-gradient(circle at center, rgba(241,89,70,.15), transparent);
+  opacity:0; transition:opacity .3s;
+}
+.step-item:hover .step-circle::before{ opacity:1; }
+.step-circle.sun{ border-color:rgba(249,194,46,.2); }
+.step-item:hover .step-circle.sun{ border-color:rgba(249,194,46,.5); box-shadow:0 0 20px rgba(249,194,46,.2); }
+
+.step-arrow{ color:rgba(255,255,255,.12); font-size:12px; }
+
+.step-icon{ font-size:22px; margin-bottom:14px; display:block; }
+
+.step-h{ font-size:15px; font-weight:700; margin-bottom:8px; letter-spacing:-.2px; }
+.step-p{ font-size:12px; color:var(--muted); line-height:1.65; font-weight:300; }
+
+/* ══════════════════════════════════════
+   TIMELINE (الخط الزمني)
+══════════════════════════════════════ */
+.timeline-wrap{ display:grid; grid-template-columns:56px 1fr; border-bottom:1px solid var(--border); }
+.timeline-body{ border-left:1px solid var(--border); padding:56px; }
+.timeline-grid{ display:grid; grid-template-columns:1fr 1fr; gap:48px; }
+.timeline-col{ position:relative; padding-right:28px; }
+.timeline-col::before{
+  content:''; position:absolute; right:0; top:8px; bottom:8px;
+  width:2px; background:linear-gradient(to bottom, var(--tomato), transparent);
+}
+.timeline-col.sun::before{ background:linear-gradient(to bottom, var(--sun), transparent); }
+.tl-item{
+  position:relative; margin-bottom:32px; padding-right:32px;
+  opacity:0; transform:translateX(-16px); transition:opacity .5s, transform .5s;
+}
+.tl-item.on{ opacity:1; transform:none; }
+.tl-dot{
+  position:absolute; right:-5px; top:8px;
+  width:12px; height:12px; background:var(--tomato); border-radius:50%;
+  box-shadow:0 0 12px rgba(241,89,70,.6);
+}
+.timeline-col.sun .tl-dot{ background:var(--sun); box-shadow:0 0 12px rgba(249,194,46,.6); }
+.tl-week{ font-size:10px; color:var(--tomato); letter-spacing:1px; margin-bottom:5px; font-weight:700; text-transform:uppercase; }
+.timeline-col.sun .tl-week{ color:var(--sun); }
+.tl-title{ font-size:15px; font-weight:700; margin-bottom:6px; }
+.tl-desc{ font-size:12px; color:var(--muted); line-height:1.7; }
+
+/* ══════════════════════════════════════
+   CONDITIONS (شروط الاستمرار) — بطاقات صارمة
+══════════════════════════════════════ */
+.cond-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--border); border:1px solid var(--border); }
+.cond-card{
+  background:var(--bg); padding:32px 28px; text-align:center;
+  border:1px solid var(--border);
+  transition:border-color .25s, box-shadow .25s;
+}
+.cond-card:hover{ border-color:rgba(241,89,70,.35); box-shadow:0 4px 24px rgba(241,89,70,.08); }
+.cond-num{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:46px; height:46px;
+  background:var(--tomato); color:var(--cream);
+  border-radius:11px; font-size:18px; font-weight:900;
+  margin-bottom:14px; box-shadow:0 0 20px rgba(241,89,70,.35);
+}
+.cond-title{ font-size:16px; font-weight:700; margin-bottom:8px; }
+.cond-desc{ font-size:12px; color:var(--muted); line-height:1.7; }
+
+/* ══════════════════════════════════════
+   FEATURES
+══════════════════════════════════════ */
+.features-wrap{ display:grid; grid-template-columns:56px 1fr; border-bottom:1px solid var(--border); }
+.feat-body{ border-left:1px solid var(--border); padding:56px; }
+.feat-header{
+  display:flex; align-items:baseline; gap:16px;
+  border-bottom:1px solid var(--border);
+  padding-bottom:16px; margin-bottom:48px;
+}
+.feat-title{ font-size:clamp(28px,3.5vw,48px); font-weight:900; letter-spacing:-2px; line-height:1; }
+.feat-count{ font-size:10px; font-weight:700; color:rgba(251,254,251,.2); letter-spacing:1px; margin-right:auto; }
+.feat-grid{
+  display:grid; grid-template-columns:repeat(3,1fr);
+  gap:1px; background:var(--border);
+  border:1px solid var(--border);
+}
+.feat-cell{
+  background:var(--bg); padding:32px 28px;
+  transition:background .3s; position:relative; overflow:hidden;
+}
+.feat-cell::after{
+  content:''; position:absolute; bottom:0; left:0; right:0; height:1.5px;
+  background:var(--tomato);
+  transform:scaleX(0); transform-origin:right; transition:transform .35s;
+}
+.feat-cell:nth-child(even):after{ background:var(--sun); }
+.feat-cell:hover{ background:rgba(255,255,255,.02); }
+.feat-cell:hover::after{ transform:scaleX(1); transform-origin:left; }
+.fc-num{
+  font-size:44px; font-weight:900; color:rgba(241,89,70,.1);
+  letter-spacing:-3px; line-height:1; margin-bottom:16px; transition:color .25s;
+}
+.feat-cell:hover .fc-num{ color:rgba(241,89,70,.18); }
+.fc-title{ font-size:14px; font-weight:700; margin-bottom:8px; letter-spacing:-.2px; }
+.fc-desc { font-size:12px; color:var(--muted); line-height:1.65; font-weight:300; }
+
+/* ══════════════════════════════════════
+   CTA
+══════════════════════════════════════ */
+.cta-block{ display:grid; grid-template-columns:56px 1fr 380px; border-bottom:1px solid var(--border); min-height:360px; }
+.cta-main{
+  border-left:1px solid var(--border); padding:60px 56px;
+  display:flex; flex-direction:column; justify-content:center;
+}
+.cta-tag{
+  font-size:9px; font-weight:700; letter-spacing:2.5px;
+  text-transform:uppercase; color:var(--tomato); margin-bottom:20px;
+  display:flex; align-items:center; gap:8px;
+}
+.cta-tag::before{ content:''; width:16px; height:1px; background:var(--tomato); }
+.cta-h{
+  font-size:clamp(36px,5vw,68px); font-weight:900;
+  letter-spacing:-3px; line-height:.95; margin-bottom:28px;
+}
+.cta-h .t{ color:var(--tomato); }
+.cta-sub{ font-size:13px; color:var(--muted); font-weight:300; margin-bottom:36px; line-height:1.7; }
+.cta-btns{ display:flex; gap:12px; flex-wrap:wrap; }
+
+.cta-side-panel{
+  border-left:1px solid var(--border); background:#0e0b0f;
+  padding:48px 40px; display:flex; flex-direction:column; gap:20px;
+  position:relative; overflow:hidden;
+}
+.cta-side-panel::before{
+  content:''; position:absolute; top:-80px; right:-80px;
+  width:300px; height:300px;
+  background:radial-gradient(circle, rgba(241,89,70,.1), transparent 70%);
+  pointer-events:none;
+}
+.activity-label{
+  font-size:9px; font-weight:700; letter-spacing:2px;
+  text-transform:uppercase; color:var(--muted);
+}
+.activity-rows{ display:flex; flex-direction:column; gap:10px; flex:1; justify-content:center; }
+.act-row{
+  display:flex; align-items:center; gap:12px;
+  padding:10px 14px; border:1px solid var(--border); border-radius:6px;
+  transition:border-color .2s, background .2s;
+  opacity:0; animation:fadeUp .4s forwards;
+}
+.act-row:nth-child(1){animation-delay:.0s}
+.act-row:nth-child(2){animation-delay:.12s}
+.act-row:nth-child(3){animation-delay:.24s}
+.act-row:nth-child(4){animation-delay:.36s}
+.act-row:hover{ border-color:rgba(241,89,70,.3); background:rgba(241,89,70,.04); }
+.act-icon{ font-size:14px; flex-shrink:0; }
+.act-text{ font-size:11px; color:var(--muted); font-weight:400; flex:1; }
+.act-text b{ color:var(--cream); font-weight:600; }
+.act-time{ font-size:9px; color:rgba(255,255,255,.15); flex-shrink:0; }
+
+/* ══════════════════════════════════════
+   FOOTER
+══════════════════════════════════════ */
+footer{
+  display:grid; grid-template-columns:56px 1fr auto;
+  align-items:center; gap:24px; padding:20px 48px;
+}
+.foot-side{ border-left:1px solid var(--border); height:100%; }
+.foot-logo{ font-size:13px; font-weight:700; display:flex; align-items:center; gap:8px; }
+.foot-info{ font-size:11px; color:rgba(251,254,251,.2); text-align:left; }
+.foot-links{ display:flex; gap:24px; }
+.foot-links a{ font-size:11px; color:rgba(251,254,251,.2); text-decoration:none; transition:color .2s; }
+.foot-links a:hover{ color:var(--cream); }
+
+/* ══════════════════════════════════════
+   SCROLL REVEALS
+══════════════════════════════════════ */
+.sr{ opacity:0; transform:translateY(24px); transition:opacity .75s, transform .75s cubic-bezier(.16,1,.3,1); }
+.sr.on{ opacity:1; transform:none; }
+
+@keyframes fadeUp{ from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:none} }
+
+/* ══════════════════════════════════════
+   MOBILE
+══════════════════════════════════════ */
+@media(max-width:960px){
+  body{ cursor:auto; }
+  .cursor,.cursor-ring{ display:none; }
+  nav{ padding:0 0 0 20px; }
+  .nav-links a:not(.nav-cta):not(:last-child){ display:none; }
+  .page{ padding-top:96px; }
+  .grid-layout-3{ grid-template-columns:1fr; }
+  .hero-main{ padding:40px 24px; min-height:auto; }
+  .hero-visual{ min-height:380px; }
+  .hero-bottom{ grid-template-columns:1fr; }
+  .hero-btns{ flex-direction:row; }
+  .side-col{ display:none; }
+  .numbers-bar{ grid-template-columns:1fr 1fr; }
+  .nb-side{ display:none; }
+  .nb-item:nth-child(2){ border-left:none; }
+  .how-wrap,.features-wrap{ grid-template-columns:1fr; }
+  .how-body,.feat-body{ padding:32px 24px; }
+  .steps-row{ grid-template-columns:1fr; gap:32px; }
+  .steps-row::before{ display:none; }
+  .step-item{ padding:0; }
+  .timeline-wrap,.features-wrap{ grid-template-columns:1fr; }
+  .timeline-body{ padding:32px 24px; }
+  .timeline-grid{ grid-template-columns:1fr; gap:24px; }
+  .cond-grid{ grid-template-columns:1fr; }
+  .feat-grid{ grid-template-columns:1fr; }
+  .cta-block{ grid-template-columns:1fr; }
+  .cta-main{ padding:40px 24px; }
+  .cta-side-panel{ min-height:280px; }
+  footer{ grid-template-columns:1fr; padding:24px; gap:12px; }
+  .foot-side{ display:none; }
+  #toast-container{ left:16px; bottom:16px; }
+  .toast{ min-width:200px; }
+}
+</style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="loader-logo">مح<span>ا</span>ولات</div>
+  <div class="loader-bar-wrap"><div class="loader-bar"></div></div>
+  <div class="loader-text">جاري التحميل…</div>
+</div>
+
+<div id="scroll-progress"><div id="scroll-fill"></div></div>
+
+<div id="toast-container"></div>
+
+<div class="cursor" id="cur"></div>
+<div class="cursor-ring" id="ring"></div>
+
+<canvas id="bg-canvas"></canvas>
+
+<nav>
+  <div class="nav-links">
+    <a href="#">المجتمع</a>
+    <a href="#how">كيف يعمل</a>
+    <a href="#timeline">الخط الزمني</a>
+    <a href="#conditions">شروط الاستمرار</a>
+    <a href="/admin.html" class="nav-cta">👑 الأدمن</a>
+  </div>
+  <div class="nav-logo-col">
+    <div class="nav-logo">✳️ محاولات</div>
+    <div class="logo-live"><div class="live-pulse"></div> مباشر</div>
+  </div>
+</nav>
+
+<div class="ticker">
+  <div class="ticker-tag">الآن</div>
+  <div class="ticker-wrap">
+    <div class="ticker-track">
+      <div class="ticker-content">
+        <div class="tick-item">محمد حقق <b>30 يوم متتالي</b> 🔥</div>
+        <div class="tick-sep">✦</div>
+        <div class="tick-item">نور أكملت <b>هدفها الأسبوعي</b> ⭐</div>
+        <div class="tick-sep">✦</div>
+        <div class="tick-item">أحمد: <b>streak جديد 45 يوم</b> 🏆</div>
+        <div class="tick-sep">✦</div>
+        <div class="tick-item"><b>248</b> عضو نشط في المجتمع حالياً</div>
+        <div class="tick-sep">✦</div>
+        <div class="tick-item">معدل الإنجاز هذا الأسبوع <b>82%</b></div>
+        <div class="tick-sep">✦</div>
+        <div class="tick-item">ريم انضمت للمجتمع اليوم 👋</div>
+      </div>
+      <div class="ticker-content">
+        <div class="tick-item">محمد حقق <b>30 يوم متتالي</b> 🔥</div>
+        <div class="tick-sep">✦</div>
+        <div class="tick-item">نور أكملت <b>هدفها الأسبوعي</b> ⭐</div>
+        <div class="tick-sep">✦</div>
+        <div class="tick-item">أحمد: <b>streak جديد 45 يوم</b> 🏆</div>
+        <div class="tick-sep">✦</div>
+        <div class="tick-item"><b>248</b> عضو نشط في المجتمع حالياً</div>
+        <div class="tick-sep">✦</div>
+        <div class="tick-item">معدل الإنجاز هذا الأسبوع <b>82%</b></div>
+        <div class="tick-sep">✦</div>
+        <div class="tick-item">ريم انضمت للمجتمع اليوم 👋</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="page">
+
+  <div class="grid-layout-3">
+    <div class="side-col">
+      <div class="side-label">Hero</div>
+      <div class="side-line"></div>
+      <div class="side-dot"></div>
+      <div class="side-line"></div>
+    </div>
+    <div class="hero-main">
+      <div class="h-eyebrow">مجتمع العادات اليومية</div>
+      <h1 class="hero-h1">
+        <span class="word-row"><span class="word-inner">ابنِ</span></span>
+        <span class="word-row"><span class="word-inner">عادات</span></span>
+        <span class="word-row"><span class="word-inner">دائمة</span></span>
+      </h1>
+      <div class="hero-bottom">
+        <p class="hero-desc">
+          منصة متابعة العادات اليومية المبنية على المساءلة الجماعية.
+          سجّل تقريرك، تابع streak بتاعك، وانمُ مع مجتمع يدعمك كل يوم.
+        </p>
+        <div class="hero-btns">
+          <a href="/admin.html" class="btn btn-red">👑 &nbsp;لوحة التحكم</a>
+          <a href="/docs.html"  class="btn btn-line">📖 &nbsp;الدليل</a>
+        </div>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="hv-glow hv-glow-1"></div>
+      <div class="hv-glow hv-glow-2"></div>
+      <div class="hv-inner">
+        <div class="hv-label">⬤ &nbsp;إحصائيات مباشرة</div>
+        <div class="hv-stat-big">
+          <div class="hv-num">248</div>
+          <div class="hv-unit">Active Members</div>
+        </div>
+        <div class="hv-board">
+          <div class="lb-row">
+            <span class="lb-rank g">01</span>
+            <span class="lb-name">محمد أ.</span>
+            <div class="lb-track"><div class="lb-fill" style="width:95%"></div></div>
+            <span class="lb-pct">95%</span>
+          </div>
+          <div class="lb-row">
+            <span class="lb-rank">02</span>
+            <span class="lb-name">نور س.</span>
+            <div class="lb-track"><div class="lb-fill" style="width:88%"></div></div>
+            <span class="lb-pct">88%</span>
+          </div>
+          <div class="lb-row">
+            <span class="lb-rank">03</span>
+            <span class="lb-name">أحمد م.</span>
+            <div class="lb-track"><div class="lb-fill" style="width:81%"></div></div>
+            <span class="lb-pct">81%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="numbers-bar sr">
+    <div class="nb-side"><span>الأرقام</span></div>
+    <div class="nb-item">
+      <div class="nb-idx">01 —</div>
+      <div class="nb-num" data-count="248">0</div>
+      <div class="nb-label">عضو نشط الآن</div>
+    </div>
+    <div class="nb-item">
+      <div class="nb-idx">02 —</div>
+      <div class="nb-num" data-count="30">0</div>
+      <div class="nb-label">متوسط أيام الـ Streak</div>
+    </div>
+    <div class="nb-item">
+      <div class="nb-idx">03 —</div>
+      <div class="nb-num" data-count="78">0</div>
+      <div class="nb-label">معدل الإنجاز %</div>
+    </div>
+    <div class="nb-item">
+      <div class="nb-idx">04 —</div>
+      <div class="nb-num" data-count="12">0</div>
+      <div class="nb-label">ألف تقرير مُرسَل</div>
+    </div>
+  </div>
+
+  <div class="how-wrap sr" id="how">
+    <div class="side-col">
+      <div class="side-label">Flow</div>
+      <div class="side-line"></div>
+      <div class="side-dot" style="background:var(--sun)"></div>
+      <div class="side-line"></div>
+    </div>
+    <div class="how-body">
+      <div class="how-header">
+        <h2 class="how-title">المراحل الثلاث</h2>
+        <span class="how-subtitle">رحلة المستخدم</span>
+      </div>
+      <div class="steps-row" id="steps-row" style="grid-template-columns:repeat(3,1fr);">
+        <div class="step-item">
+          <div class="step-num-wrap">
+            <div class="step-circle">1</div>
+            <div class="step-arrow">←</div>
+          </div>
+          <span class="step-icon">📍</span>
+          <div class="step-h">مرحلة التعريف</div>
+          <div class="step-p">أصعب خطوة دايماً هي البداية. عشان نكسر حاجز الرهبة، خلينا "التعريف بنفسك" هو مفتاح الدخول الوحيد. بدون تعريف عميق بـ "من أنت وهدفك"، ستظل القنوات مغلقة.</div>
+        </div>
+        <div class="step-item">
+          <div class="step-num-wrap">
+            <div class="step-circle sun">2</div>
+            <div class="step-arrow">←</div>
+          </div>
+          <span class="step-icon">🔍</span>
+          <div class="step-h">مرحلة الاستكشاف</div>
+          <div class="step-p">مش مطلوب منك تبدأ جري فوراً. هذه المرحلة للتعرف على المجتمع. لف في القنوات براحتك، واقرأ حكايات ناس زيك. لو ديسكورد جديد عليك، جرب واختار الأدوار اللي تناسب اهتماماتك.</div>
+        </div>
+        <div class="step-item">
+          <div class="step-num-wrap">
+            <div class="step-circle sun">3</div>
+          </div>
+          <span class="step-icon">🎯</span>
+          <div class="step-h">مرحلة الالتزام</div>
+          <div class="step-p">هنا يبدأ العمل الحقيقي. تدوين أهدافك (من السنوية إلى اليومية)، التفاعل اليومي المستمر، وحضور اللقاء الأسبوعي. استعد لتفيد غيرك بخبرتك وشارك بقوة في التحديات.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="timeline-wrap sr" id="timeline">
+    <div class="side-col">
+      <div class="side-label">Timeline</div>
+      <div class="side-line"></div>
+      <div class="side-dot" style="background:var(--sun)"></div>
+      <div class="side-line"></div>
+    </div>
+    <div class="timeline-body">
+      <div class="how-header">
+        <h2 class="how-title">الخط الزمني</h2>
+        <span class="how-subtitle">الشهر الأول — أسبوع بأسبوع</span>
+      </div>
+      <div class="timeline-grid">
+        <div class="timeline-col">
+          <div class="tl-item">
+            <div class="tl-dot"></div>
+            <div class="tl-week">الأسبوع الأول</div>
+            <div class="tl-title">لقاء تعارف مفتوح</div>
+            <div class="tl-desc">نتعارف فيه على بعض وعلى نظام المجتمع بشكل عام، وبنجاوب على كل أسئلتكم بخصوص المكان.</div>
+          </div>
+          <div class="tl-item">
+            <div class="tl-dot"></div>
+            <div class="tl-week">الأسبوع الثاني</div>
+            <div class="tl-title">ورشة الهدف الكبير</div>
+            <div class="tl-desc">بنراجع سوا الأسبوع الأول ونتكلم عن إزاي تحول "الهدف الكبير" لـ "عادة يومية صغيرة" ليها علاقة مباشرة بيه.</div>
+          </div>
+        </div>
+        <div class="timeline-col sun">
+          <div class="tl-item">
+            <div class="tl-dot"></div>
+            <div class="tl-week">الأسبوع الثالث</div>
+            <div class="tl-title">ورشة تشخيص يومك</div>
+            <div class="tl-desc">بنراجع سوا اللي أنجزناه ونتكلم عن "تشخيص يومك": إزاي تعرف وقتك بيضيع فين وطاقاتك بتكون إمتى أعمق؟</div>
+          </div>
+          <div class="tl-item">
+            <div class="tl-dot"></div>
+            <div class="tl-week">الأسبوع الرابع</div>
+            <div class="tl-title">ورشة التخطيط العملي</div>
+            <div class="tl-desc">بنراجع الأسبوع الثالث ونتكلم عن التخطيط العملي: إزاي تحط خطة لتطوير مسارك المهني بشكل واقعي يناسب السوق.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="features-wrap sr" id="conditions">
+    <div class="side-col">
+      <div class="side-label">Conditions</div>
+      <div class="side-line"></div>
+      <div class="side-dot" style="background:var(--sun)"></div>
+      <div class="side-line"></div>
+    </div>
+    <div class="feat-body">
+      <div class="feat-header">
+        <h2 class="feat-title">شروط الاستمرار</h2>
+        <span class="feat-count">٣ شروط</span>
+      </div>
+      <div class="cond-grid">
+        <div class="cond-card">
+          <div class="cond-num">١</div>
+          <div class="cond-title">التفاعل</div>
+          <div class="cond-desc">وجودك كاسم في القائمة غير كافٍ. المطلوب هو حضور حقيقي وملموس؛ تشارك في النقاشات اليومية، تتفاعل مع محاولات غيرك. "الشاهدة الصامتة" لا مكان لها هنا.</div>
+        </div>
+        <div class="cond-card">
+          <div class="cond-num">٢</div>
+          <div class="cond-title">إتمام المهام</div>
+          <div class="cond-desc">الالتزام العملي بالمهام الدورية هو مقياس جديتك. نحن لا نحاسب على النتائج ولكن نحاسب بصرامة على "الالتزام بالمحاولة" وتنفيذ المطلوب.</div>
+        </div>
+        <div class="cond-card">
+          <div class="cond-num">٣</div>
+          <div class="cond-title">إفادة الغير</div>
+          <div class="cond-desc">لأننا نؤمن بتبادل النفعة، مطلوب منك تفيد غيرك بخبرتك مرتين سنوياً على الأقل. المجتمع الحقيقي مبني على العطاء، مش الأخذ فقط.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cta-block sr">
+    <div class="side-col">
+      <div class="side-label">Join</div>
+      <div class="side-line"></div>
+      <div class="side-dot" style="background:var(--sun)"></div>
+      <div class="side-line"></div>
+    </div>
+    <div class="cta-main">
+      <div class="cta-tag">انضم الآن</div>
+      <h2 class="cta-h">ابدأ<br><span class="t">محاولتك</span><br>اليوم</h2>
+      <p class="cta-sub">أكثر من 248 شخص يبنون عادات أفضل كل يوم — انضم وابدأ رحلتك.</p>
+      <div class="cta-btns">
+        <a href="/admin.html" class="btn btn-red">👑 لوحة التحكم</a>
+        <a href="/docs.html"  class="btn btn-line">📖 الدليل</a>
+      </div>
+    </div>
+    <div class="cta-side-panel">
+      <div class="activity-label">⬤ &nbsp;آخر النشاطات</div>
+      <div class="activity-rows">
+        <div class="act-row"><span class="act-icon">🔥</span><span class="act-text"><b>محمد</b> أكمل يومه الـ 30</span><span class="act-time">الآن</span></div>
+        <div class="act-row"><span class="act-icon">⭐</span><span class="act-text"><b>نور</b> حققت هدفها الأسبوعي</span><span class="act-time">٥ د</span></div>
+        <div class="act-row"><span class="act-icon">🏆</span><span class="act-text"><b>أحمد</b> streak جديد 45 يوم</span><span class="act-time">١٢ د</span></div>
+        <div class="act-row"><span class="act-icon">👋</span><span class="act-text"><b>ريم</b> انضمت للمجتمع</span><span class="act-time">٢٠ د</span></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="foot-side"></div>
+    <div class="foot-logo">✳️ محاولات</div>
+    <div class="foot-links">
+      <a href="/docs.html">الدليل</a>
+      <a href="/admin.html">الأدمن</a>
+    </div>
+    <div class="foot-info">Muhawalat Bot v7.2 · 2026</div>
+  </footer>
+
+</div><script>
+/* ══ LOADER (مع حماية لضمان اختفائه) ══ */
+function hideLoader() {
+  setTimeout(() => { document.getElementById('loader').classList.add('hidden'); }, 1800);
+}
+if (document.readyState === 'complete') {
+  hideLoader();
+} else {
+  window.addEventListener('load', hideLoader);
+}
+
+/* ══ SCROLL PROGRESS ══ */
+window.addEventListener('scroll', () => {
+  const el   = document.documentElement;
+  const pct  = (el.scrollTop / (el.scrollHeight - el.clientHeight)) * 100;
+  document.getElementById('scroll-fill').style.width = pct + '%';
+}, { passive: true });
+
+/* ══ CURSOR ══ */
+const cur  = document.getElementById('cur');
+const ring = document.getElementById('ring');
+let mx = window.innerWidth / 2, my = window.innerHeight / 2;
+let rx = mx, ry = my;
+
+document.addEventListener('mousemove', e => {
+  mx = e.clientX; my = e.clientY;
+});
+
+function renderCursor() {
+  cur.style.left = mx + 'px';
+  cur.style.top  = my + 'px';
+  rx += (mx - rx) * 0.15;
+  ry += (my - ry) * 0.15;
+  ring.style.left = rx + 'px';
+  ring.style.top  = ry + 'px';
+  requestAnimationFrame(renderCursor);
+}
+requestAnimationFrame(renderCursor);
+
+/* ══ CANVAS PARTICLES (تحسين الأداء لـ 50 جزيء لسرعة السكرول) ══ */
+const canvas = document.getElementById('bg-canvas');
+const ctx    = canvas.getContext('2d');
+let W, H;
+function resize(){ W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+resize(); window.addEventListener('resize', resize);
+
+const COLORS = ['#F15946','#F9C22E','#7286A0'];
+class P {
+  constructor(){ this.reset(); }
+  reset(){
+    this.x  = Math.random()*W; this.y  = Math.random()*H;
+    this.vx = (Math.random()-.5)*.25; this.vy = (Math.random()-.5)*.25;
+    this.r  = Math.random()*1.2+.3;
+    this.a  = Math.random()*.25+.04;
+    this.c  = COLORS[Math.floor(Math.random()*3)];
+  }
+  step(){ this.x+=this.vx; this.y+=this.vy; if(this.x<0||this.x>W||this.y<0||this.y>H) this.reset(); }
+  draw(){ ctx.beginPath(); ctx.arc(this.x,this.y,this.r,0,Math.PI*2); ctx.fillStyle=this.c; ctx.globalAlpha=this.a; ctx.fill(); }
+}
+const pts = Array.from({length:50}, () => new P());
+
+function drawLines(){
+  for(let i=0;i<pts.length;i++) for(let j=i+1;j<pts.length;j++){
+    const dx=pts[i].x-pts[j].x, dy=pts[i].y-pts[j].y, d=Math.hypot(dx,dy);
+    if(d<110){
+      ctx.beginPath(); ctx.moveTo(pts[i].x,pts[i].y); ctx.lineTo(pts[j].x,pts[j].y);
+      ctx.strokeStyle='#7286A0'; ctx.globalAlpha=(1-d/110)*.05; ctx.lineWidth=.5; ctx.stroke();
+    }
+  }
+}
+(function loop(){
+  ctx.clearRect(0,0,W,H); ctx.globalAlpha=1;
+  pts.forEach(p=>{p.step();p.draw()});
+  drawLines(); requestAnimationFrame(loop);
+})();
+
+/* ══ SCROLL REVEALS ══ */
+const io = new IntersectionObserver(
+  es => es.forEach(e => { if(e.isIntersecting) e.target.classList.add('on'); }),
+  { threshold: .08 }
+);
+document.querySelectorAll('.sr').forEach(el => io.observe(el));
+
+/* ══ STEP REVEALS ══ */
+const stepIO = new IntersectionObserver(
+  es => es.forEach(e => {
+    if(e.isIntersecting){
+      e.target.querySelectorAll('.step-item').forEach(s => s.classList.add('on'));
+    }
+  }), { threshold: .15 }
+);
+const stepsRow = document.getElementById('steps-row');
+if(stepsRow) stepIO.observe(stepsRow);
+
+const tlIO = new IntersectionObserver(
+  es => es.forEach(e => {
+    if(e.isIntersecting)
+      e.target.querySelectorAll('.tl-item').forEach(t => t.classList.add('on'));
+  }), { threshold: .1 }
+);
+document.querySelectorAll('.timeline-col').forEach(col => tlIO.observe(col));
+
+/* ══ COUNT-UP ══ */
+function countUp(el, target){
+  const dur = 1400, t0 = performance.now();
+  (function step(now){
+    const p = Math.min((now-t0)/dur, 1), v = 1-Math.pow(1-p,3);
+    el.textContent = Math.floor(v*target);
+    if(p<1) requestAnimationFrame(step);
+  })(t0);
+}
+const numbersBar = document.querySelector('.numbers-bar');
+if(numbersBar){
+  new IntersectionObserver(es => es.forEach(e => {
+    if(e.isIntersecting)
+      e.target.querySelectorAll('.nb-num[data-count]').forEach(el => countUp(el, +el.dataset.count));
+  }), { threshold: .2 }).observe(numbersBar);
+}
+
+/* ══ LIVE DATA — شريط الأرقام والهيرو من /api/health ══ */
+function fetchLiveStats(){
+  fetch('/api/health').then(r => r.json()).then(data => {
+    if(typeof data.users !== 'number') return;
+    const nb = document.querySelector('.numbers-bar');
+    if(nb){
+      const firstNum = nb.querySelector('.nb-num[data-count]');
+      if(firstNum){ firstNum.dataset.count = data.users; firstNum.textContent = data.users; }
+    }
+    const hvNum = document.querySelector('.hv-num');
+    if(hvNum) hvNum.textContent = data.users;
+    const ctaSub = document.querySelector('.cta-sub');
+    if(ctaSub) ctaSub.textContent = 'أكثر من ' + data.users + ' شخص يبنون عادات أفضل كل يوم — انضم وابدأ رحلتك.';
+  }).catch(() => {});
+}
+fetchLiveStats();
+setInterval(fetchLiveStats, 60000);
+
+/* ══ TOAST NOTIFICATIONS ══ */
+const toastEvents = [
+  { icon:'🔥', name:'محمد أ.', msg:'أكمل يومه الـ 31 متتالي!', color:'#F15946' },
+  { icon:'⭐', name:'نور س.', msg:'حققت هدفها الأسبوعي', color:'#F9C22E' },
+  { icon:'🏆', name:'أحمد م.', msg:'وصل لـ streak 46 يوم', color:'#F9C22E' },
+  { icon:'✅', name:'سارة ع.', msg:'أرسلت تقرير اليوم', color:'#7286A0' },
+  { icon:'🎯', name:'عمر خ.', msg:'أكمل عادة القراءة ١٠٠٪', color:'#F15946' },
+  { icon:'👋', name:'لينا م.', msg:'انضمت للمجتمع للتو', color:'#7286A0' },
+  { icon:'💪', name:'خالد ر.', msg:'عاد بعد انقطاع — streak جديد', color:'#F15946' },
+  { icon:'📈', name:'هند ص.', msg:'أعلى معدل إنجاز هذا الأسبوع', color:'#F9C22E' },
+];
+
+const container = document.getElementById('toast-container');
+let toastIdx = 0;
+
+function showToast(){
+  const ev = toastEvents[toastIdx % toastEvents.length];
+  toastIdx++;
+
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.innerHTML = `
+    <div class="toast-dot" style="background:${ev.color};box-shadow:0 0 8px ${ev.color}"></div>
+    <div class="toast-body">
+      <div class="toast-name">${ev.name} ${ev.icon}</div>
+      <div class="toast-msg">${ev.msg}</div>
+    </div>
+    <div class="toast-time">الآن</div>
+  `;
+  container.appendChild(t);
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => t.classList.add('show'));
+  });
+
+  setTimeout(() => {
+    t.classList.remove('show');
+    t.classList.add('hide');
+    setTimeout(() => t.remove(), 400);
+  }, 4000);
+}
+
+// start toasts after page loads, every 7s
+setTimeout(() => {
+  showToast();
+  setInterval(showToast, 7000);
+}, 3500);
+</script>
+</body>
+</html>

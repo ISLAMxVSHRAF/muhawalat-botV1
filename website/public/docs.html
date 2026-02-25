@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>محاولات — المرجع الشامل</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    /* ═══════════════════════════════════════════════════════════════
+       IDENTITY — Neo-Brutalism, Typography-First
+       ═══════════════════════════════════════════════════════════════ */
+    :root {
+      --bg:      #0C090D;
+      --surface: #0F0C10;
+      --slate:   #7286A0;
+      --tomato:  #F15946;
+      --sun:     #F9C22E;
+      --green:   #3DD68C;
+      --cream:   #FBFEFB;
+      --border:  rgba(251,254,251,.08);
+      --border-hi: rgba(251,254,251,.14);
+      --muted:   rgba(251,254,251,.4);
+      --dim:     rgba(251,254,251,.15);
+    }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'IBM Plex Sans Arabic', sans-serif;
+      background: var(--bg);
+      color: var(--cream);
+      line-height: 1.7;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      opacity: .03;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       TOP BAR (mobile TOC trigger)
+       ═══════════════════════════════════════════════════════════════ */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(12,9,13,.92);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .topbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--cream);
+    }
+    .topbar-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--tomato);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+    .topbar-name { font-size: 15px; font-weight: 800; letter-spacing: -.3px; }
+    .toc-toggle {
+      display: none;
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(255,255,255,.04);
+      color: var(--cream);
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    .toc-toggle:hover { border-color: var(--border-hi); }
+    @media (max-width: 900px) {
+      .toc-toggle { display: inline-flex; align-items: center; gap: 6px; }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       LAYOUT: Sticky Sidebar (right) + Content
+       ═══════════════════════════════════════════════════════════════ */
+    .docs-wrap {
+      display: grid;
+      grid-template-columns: 1fr 220px;
+      max-width: 1200px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+    @media (max-width: 900px) {
+      .docs-wrap { grid-template-columns: 1fr; }
+    }
+
+    .docs-content {
+      min-width: 0;
+      padding: 32px 28px 80px;
+    }
+    @media (max-width: 600px) {
+      .docs-content { padding: 24px 18px 60px; }
+    }
+
+    /* ─── Sticky Sidebar (TOC) ─── */
+    .toc-sidebar {
+      position: sticky;
+      top: 72px;
+      height: fit-content;
+      padding: 24px 0 24px 24px;
+      border-right: 1px solid var(--border);
+    }
+    @media (max-width: 900px) {
+      .toc-sidebar {
+        display: none;
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 200;
+        background: var(--bg);
+        border: none;
+        padding: 24px;
+        overflow-y: auto;
+      }
+      .toc-sidebar.open { display: block; }
+    }
+    .toc-title {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+    .toc-list { list-style: none; }
+    .toc-list li { margin-bottom: 2px; }
+    .toc-list a {
+      display: block;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--muted);
+      text-decoration: none;
+      transition: color .2s, background .2s, border-color .2s;
+      border: 1px solid transparent;
+    }
+    .toc-list a:hover { color: var(--cream); background: rgba(255,255,255,.04); }
+    .toc-list a.active { color: var(--tomato); border-color: rgba(241,89,70,.2); }
+    .toc-close {
+      display: none;
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      width: 40px;
+      height: 40px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(255,255,255,.04);
+      color: var(--cream);
+      font-size: 18px;
+      cursor: pointer;
+    }
+    @media (max-width: 900px) {
+      .toc-close { display: flex; align-items: center; justify-content: center; }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       TYPOGRAPHY — Sections
+       ═══════════════════════════════════════════════════════════════ */
+    .doc-hero {
+      padding: 40px 0 48px;
+      border-bottom: 1px solid var(--border);
+    }
+    .doc-hero h1 {
+      font-size: clamp(28px, 5vw, 42px);
+      font-weight: 900;
+      letter-spacing: -1.5px;
+      line-height: 1.15;
+      margin-bottom: 12px;
+    }
+    .doc-hero p { font-size: 15px; color: var(--muted); max-width: 560px; }
+    .doc-section {
+      padding: 40px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .doc-section:last-of-type { border-bottom: none; }
+    .doc-h2 {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -.5px;
+      margin-bottom: 20px;
+      color: var(--cream);
+    }
+    .doc-h3 { font-size: 17px; font-weight: 700; margin: 24px 0 12px; }
+    .doc-p { font-size: 14px; color: var(--muted); margin-bottom: 16px; }
+    .doc-p strong { color: var(--cream); }
+
+    /* ─── Ranks Table ─── */
+    .ranks-table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin: 20px 0;
+    }
+    .ranks-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    .ranks-table th {
+      text-align: right;
+      padding: 14px 18px;
+      background: rgba(255,255,255,.04);
+      border-bottom: 1px solid var(--border);
+      font-weight: 700;
+      color: var(--cream);
+    }
+    .ranks-table td {
+      padding: 14px 18px;
+      border-bottom: 1px solid rgba(255,255,255,.04);
+      color: var(--muted);
+    }
+    .ranks-table tr:last-child td { border-bottom: none; }
+    .ranks-table .rank-emoji { font-size: 20px; }
+    .ranks-table .rank-name { color: var(--cream); font-weight: 600; }
+    .ranks-table .rank-days { color: var(--sun); font-weight: 600; }
+
+    /* ─── Achievements Grid ─── */
+    .ach-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 14px;
+      margin: 20px 0;
+    }
+    .ach-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .ach-card:hover { border-color: var(--border-hi); box-shadow: inset 0 0 24px rgba(241,89,70,.03); }
+    .ach-emoji { font-size: 32px; margin-bottom: 10px; display: block; }
+    .ach-name { font-size: 14px; font-weight: 700; margin-bottom: 6px; color: var(--cream); }
+    .ach-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+    /* ─── Terminal Code Block + Copy ─── */
+    .term-wrap {
+      position: relative;
+      margin: 20px 0;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      background: #08080c;
+    }
+    .term-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: rgba(255,255,255,.03);
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .term-copy {
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.04);
+      color: var(--muted);
+      font-size: 11px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: border-color .2s, color .2s;
+    }
+    .term-copy:hover { color: var(--cream); border-color: var(--border-hi); }
+    .term-copy.copied { color: var(--green); border-color: rgba(61,214,140,.3); }
+    .term-body {
+      padding: 18px 20px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 13px;
+      line-height: 1.9;
+      color: rgba(251,254,251,.85);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .term-body .c-comment { color: rgba(251,254,251,.35); }
+    .term-body .c-key   { color: #7FB3D3; }
+    .term-body .c-str  { color: var(--green); }
+    .term-body .c-num  { color: var(--sun); }
+
+    /* ═══════════════════════════════════════════════════════════════
+       FOOTER
+       ═══════════════════════════════════════════════════════════════ */
+    .doc-footer {
+      padding: 28px 0;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .doc-footer-brand { font-size: 13px; font-weight: 700; }
+    .doc-footer-sub { font-size: 11px; color: var(--dim); margin-top: 4px; }
+    .doc-footer-links { display: flex; gap: 10px; }
+    .doc-footer-links a {
+      font-size: 12px;
+      color: var(--muted);
+      text-decoration: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      transition: color .2s, border-color .2s;
+    }
+    .doc-footer-links a:hover { color: var(--cream); border-color: var(--border-hi); }
+  </style>
+</head>
+<body>
+
+  <header class="topbar">
+    <a href="/" class="topbar-brand">
+      <div class="topbar-icon">✳️</div>
+      <span class="topbar-name">محاولات</span>
+    </a>
+    <button type="button" class="toc-toggle" id="toc-toggle" aria-label="فتح المحتويات">📋 المحتويات</button>
+  </header>
+
+  <div class="docs-wrap">
+    <aside class="toc-sidebar" id="toc-sidebar">
+      <button type="button" class="toc-close" id="toc-close" aria-label="إغلاق">✕</button>
+      <div class="toc-title">المحتويات</div>
+      <nav>
+        <ul class="toc-list">
+          <li><a href="#intro">مقدمة النظام</a></li>
+          <li><a href="#streak">الستريك والفريز</a></li>
+          <li><a href="#ranks">الرتب</a></li>
+          <li><a href="#achievements">الإنجازات</a></li>
+          <li><a href="#commands">دليل الأوامر</a></li>
+          <li><a href="#challenges">نظام التحديات</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="docs-content">
+      <div class="doc-hero" id="intro">
+        <h1>المرجع الشامل</h1>
+        <p>كل ما تحتاج معرفته عن نظام محاولات: الستريك، الرتب، الإنجازات، وكيف تستخدم مساحتك وتشارك في التحديات.</p>
+      </div>
+
+      <section class="doc-section" id="streak">
+        <h2 class="doc-h2">🔥 الستريك و‌Streak Freeze</h2>
+        <p class="doc-p">الستريك هو عدد الأيام المتتالية التي تكمل فيها كل عاداتك اليومية. كل يوم تصل فيه إلى 100% يزيد الستريك بيوم، وإذا لم تكمل يُحسب اليوم كـ «بدون إنجاز» وقد ينكسر الستريك حسب إعدادات النظام.</p>
+        <p class="doc-p"><strong>Streak Freeze ❄️</strong> ميزة حماية: تمتلك رصيد فريز (عادةً واحد كل شهر). إذا لم تكمل عاداتك في يوم معيّن، يمكن للنظام استخدام الفريز بدل كسر الستريك، فيُحسب اليوم «مجمّد» والستريك يبقى كما هو.</p>
+        <p class="doc-p"><strong>كيفية التجديد:</strong> يُجدَّد رصيد الـ Streak Freeze تلقائياً في أول كل شهر. إذا كان رصيدك صفراً، يعود إلى القيمة الافتراضية (واحد). ستتلقى إشعاراً في مساحتك عندما يَستخدم البوت الفريز نيابة عنك.</p>
+      </section>
+
+      <section class="doc-section" id="ranks">
+        <h2 class="doc-h2">الرتب</h2>
+        <p class="doc-p">رتبتك تتحدد حسب عدد أيام الستريك الحالية. كلما التزمت أياماً أكثر، ترتقي لرتبة أعلى.</p>
+        <div class="ranks-table-wrap">
+          <table class="ranks-table">
+            <thead>
+              <tr>
+                <th>الرتبة</th>
+                <th>الأيام المطلوبة</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="rank-emoji">🌱</span> <span class="rank-name">بداية الرحلة</span></td>
+                <td class="rank-days">0 – 3 أيام</td>
+              </tr>
+              <tr>
+                <td><span class="rank-emoji">🚀</span> <span class="rank-name">على الطريق</span></td>
+                <td class="rank-days">4 – 14 يوماً</td>
+              </tr>
+              <tr>
+                <td><span class="rank-emoji">🔥</span> <span class="rank-name">وحش الالتزام</span></td>
+                <td class="rank-days">15 – 30 يوماً</td>
+              </tr>
+              <tr>
+                <td><span class="rank-emoji">💎</span> <span class="rank-name">نمط حياة</span></td>
+                <td class="rank-days">31 يوماً فأكثر</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="doc-section" id="achievements">
+        <h2 class="doc-h2">الإنجازات</h2>
+        <p class="doc-p">تحصل على إنجازات تلقائياً عند استيفاء الشروط. تظهر في مساحتك وفي صفحتك على الموقع.</p>
+        <div class="ach-grid">
+          <div class="ach-card">
+            <span class="ach-emoji">🌱</span>
+            <div class="ach-name">بداية الرحلة</div>
+            <div class="ach-desc">أول يوم التزام كامل</div>
+          </div>
+          <div class="ach-card">
+            <span class="ach-emoji">🔥</span>
+            <div class="ach-name">أسبوع ملتهب</div>
+            <div class="ach-desc">7 أيام متتالية من الالتزام</div>
+          </div>
+          <div class="ach-card">
+            <span class="ach-emoji">💎</span>
+            <div class="ach-name">ماسة الالتزام</div>
+            <div class="ach-desc">30 يوم متتالي</div>
+          </div>
+          <div class="ach-card">
+            <span class="ach-emoji">👑</span>
+            <div class="ach-name">الملك</div>
+            <div class="ach-desc">100 يوم متتالي — أسطورة!</div>
+          </div>
+          <div class="ach-card">
+            <span class="ach-emoji">💯</span>
+            <div class="ach-name">المئوية</div>
+            <div class="ach-desc">100 عادة منجزة</div>
+          </div>
+          <div class="ach-card">
+            <span class="ach-emoji">⭐</span>
+            <div class="ach-name">نجم الإنجاز</div>
+            <div class="ach-desc">500 عادة منجزة</div>
+          </div>
+          <div class="ach-card">
+            <span class="ach-emoji">🏆</span>
+            <div class="ach-name">الأسطورة</div>
+            <div class="ach-desc">1000 عادة منجزة</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="doc-section" id="commands">
+        <h2 class="doc-h2">دليل الأوامر (العضو)</h2>
+        <p class="doc-p">في مساحتك (الـ Thread) تستخدم الأزرار والقوائم التالية. لا تحتاج أوامر نصية — كل شيء من الواجهة.</p>
+
+        <h3 class="doc-h3">أزرار التحكم في الداشبورد</h3>
+        <div class="term-wrap">
+          <div class="term-head">
+            <span>مساحتك — أزرار التحكم</span>
+            <button type="button" class="term-copy" data-copy="term-1">نسخ</button>
+          </div>
+          <div class="term-body" id="term-1"><span class="c-comment"># أزرار تظهر في رسالة الداشبورد</span>
+➕ إضافة عادة
+🔄 تحديث
+🗑️ حذف عادة
+✏️ تعديل الملف الشخصي
+
+<span class="c-comment"># القائمة المنسدلة (Select Menu)</span>
+📊 إحصائيات
+🏆 الإنجازات
+🎯 هدف السنة  |  🗓️ هدف الشهر  |  📅 هدف الأسبوع
+🌐 موقعي
+ℹ️ عن البوت</div>
+        </div>
+
+        <h3 class="doc-h3">التقارير اليومية</h3>
+        <p class="doc-p">لكي يُحسب أنك أتممت التقرير اليومي، اكتب في قناة التقارير اليومية رسالة من <strong>15 كلمة على الأقل</strong>. البوت يسجّل تلقائياً ويرد بتفاعل 👏 عند التسجيل.</p>
+      </section>
+
+      <section class="doc-section" id="challenges">
+        <h2 class="doc-h2">نظام التحديات</h2>
+        <p class="doc-p">التحديات تُنشأ من إدارة المجتمع وتُنشر في قناة التحديات (Forum). للمشاركة وتسجيل يومك في التحدي:</p>
+        <ul style="margin: 12px 0 20px 24px; color: var(--muted); font-size: 14px;">
+          <li>ادخل إلى موضوع (Thread) التحدي.</li>
+          <li>اكتب <strong style="color: var(--cream);">تم ✅</strong> أو أي رسالة تحتوي على ✅ في يومك.</li>
+          <li>كل يوم يُحسب منفصل؛ الليدربورد يرتب المشاركين بعدد الأيام المنجزة من إجمالي مدة التحدي.</li>
+          <li>عند تسجيلك أول يوم، يتم تسجيلك تلقائياً كمشارك في التحدي.</li>
+        </ul>
+        <div class="term-wrap">
+          <div class="term-head">
+            <span>تسجيل يوم في التحدي</span>
+            <button type="button" class="term-copy" data-copy="term-2">نسخ</button>
+          </div>
+          <div class="term-body" id="term-2">تم ✅
+<span class="c-comment"># أو أي نص يحتوي على ✅ مثل: خلصت اليوم ✅</span></div>
+        </div>
+      </section>
+
+      <footer class="doc-footer">
+        <div>
+          <div class="doc-footer-brand">✳️ محاولات — المرجع الشامل</div>
+          <div class="doc-footer-sub">للمجتمع والأعضاء · لا يشمل أوامر إدارية</div>
+        </div>
+        <div class="doc-footer-links">
+          <a href="/">الرئيسية</a>
+          <a href="/member.html">صفحة العضو</a>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    /* TOC: mobile open/close */
+    var tocToggle = document.getElementById('toc-toggle');
+    var tocSidebar = document.getElementById('toc-sidebar');
+    var tocClose = document.getElementById('toc-close');
+    if (tocToggle) tocToggle.addEventListener('click', function () { tocSidebar.classList.add('open'); });
+    if (tocClose) tocClose.addEventListener('click', function () { tocSidebar.classList.remove('open'); });
+    tocSidebar.querySelectorAll('.toc-list a').forEach(function (a) {
+      a.addEventListener('click', function () {
+        if (window.innerWidth <= 900) tocSidebar.classList.remove('open');
+      });
+    });
+
+    /* Active section in TOC */
+    var sections = document.querySelectorAll('.doc-section[id], .doc-hero[id]');
+    var tocLinks = document.querySelectorAll('.toc-list a');
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        var id = e.target.id;
+        tocLinks.forEach(function (l) {
+          l.classList.toggle('active', l.getAttribute('href') === '#' + id);
+        });
+      });
+    }, { threshold: 0.2, rootMargin: '-80px 0px -40% 0px' });
+    sections.forEach(function (s) { observer.observe(s); });
+
+    /* Copy button (dummy / real) */
+    document.querySelectorAll('.term-copy').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = this.getAttribute('data-copy');
+        var el = document.getElementById(id);
+        var text = el ? el.textContent : '';
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function () {
+            btn.textContent = 'تم النسخ';
+            btn.classList.add('copied');
+            setTimeout(function () { btn.textContent = 'نسخ'; btn.classList.remove('copied'); }, 2000);
+          });
+        } else {
+          btn.textContent = 'تم';
+          btn.classList.add('copied');
+          setTimeout(function () { btn.textContent = 'نسخ'; btn.classList.remove('copied'); }, 1500);
+        }
+      });
+    });
+  </script>
+</body>
+</html>

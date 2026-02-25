@@ -1,0 +1,136 @@
+// ==========================================
+// 📅 TASKS — Slash Commands
+// /task_create, /task_list
+// ==========================================
+
+const {
+    SlashCommandBuilder,
+    PermissionFlagsBits,
+    EmbedBuilder,
+    ChannelType
+} = require('discord.js');
+const CONFIG = require('../config');
+
+const ERR = CONFIG.ADMIN?.unifiedErrorMessage || '❌ حدث خطأ داخلي.';
+
+const taskCreateData = new SlashCommandBuilder()
+    .setName('task_create')
+    .setDescription('إنشاء مهمة جديدة (أسبوعية أو شهرية)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addStringOption(o => o.setName('type').setDescription('نوع المهمة')
+        .addChoices(
+            { name: 'أسبوعية', value: 'weekly' },
+            { name: 'شهرية', value: 'monthly' }
+        ).setRequired(true))
+    .addStringOption(o => o.setName('title').setDescription('عنوان المهمة').setRequired(true))
+    .addStringOption(o => o.setName('description').setDescription('وصف المهمة').setRequired(true))
+    .addAttachmentOption(o => o.setName('image').setDescription('صورة مرفقة مع المهمة (اختياري)').setRequired(false));
+
+async function taskCreateExecute(interaction, { db, client }) {
+    await interaction.deferReply({ ephemeral: true });
+    try {
+        const type = interaction.options.getString('type');
+        const title = interaction.options.getString('title').trim();
+        const description = interaction.options.getString('description').trim();
+        const image = interaction.options.getAttachment('image');
+
+        const forumId = type === 'weekly'
+            ? process.env.WEEKLY_TASKS_FORUM_ID
+            : process.env.MONTHLY_TASKS_FORUM_ID;
+
+        if (!forumId) return interaction.editReply('❌ قناة المهام غير محددة في .env');
+
+        const forum = await interaction.guild.channels.fetch(forumId).catch(() => null);
+        if (!forum) return interaction.editReply('❌ القناة غير موجودة');
+
+        const graceHours = type === 'weekly' ? 48 : 120;
+        const now = new Date();
+        const lockAt = new Date(now.getTime() + graceHours * 60 * 60 * 1000);
+
+        let period;
+        if (type === 'weekly') {
+            const weekNum = Math.ceil(now.getDate() / 7);
+            period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-W${weekNum}`;
+        } else {
+            period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        }
+
+        const typeAr = type === 'weekly' ? 'الأسبوعية' : 'الشهرية';
+
+        const thread = await forum.threads.create({
+            name: `📌 المهمة ${typeAr} | ${title}`,
+            message: {
+                content: [
+                    `# 📌 المهمة ${typeAr}`,
+                    '',
+                    `**${title}**`,
+                    '',
+                    description,
+                    '',
+                    `⏰ آخر موعد للتسجيل: <t:${Math.floor(lockAt.getTime() / 1000)}:F>`,
+                    '',
+                    '✅ **عشان تسجل إتمامك، اكتب رسالة فوق 10 كلمات**'
+                ].join('\n'),
+                files: image ? [image.url] : [] // 👈 السطر ده اللي زاد
+            }
+        });
+
+        db.createTask(
+            interaction.guild.id, type, title, description,
+            thread.id, period, graceHours,
+            lockAt.toISOString(), interaction.user.id
+        );
+
+        await interaction.editReply(
+            `✅ تم إنشاء المهمة ${typeAr}\n` +
+            `📌 **${title}**\n` +
+            `⏰ تقفل: <t:${Math.floor(lockAt.getTime() / 1000)}:R>\n` +
+            `Thread: <#${thread.id}>`
+        );
+    } catch (e) {
+        console.error('❌ task_create:', e);
+        await interaction.editReply(ERR).catch(() => {});
+    }
+}
+
+const taskListData = new SlashCommandBuilder()
+    .setName('task_list')
+    .setDescription('عرض المهام النشطة الحالية')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
+
+async function taskListExecute(interaction, { db }) {
+    await interaction.deferReply({ ephemeral: true });
+    try {
+        const weeklyTasks = db.getActiveTasks(interaction.guild.id, 'weekly');
+        const monthlyTasks = db.getActiveTasks(interaction.guild.id, 'monthly');
+        const all = [...weeklyTasks, ...monthlyTasks];
+
+        if (!all.length) {
+            return interaction.editReply('📭 لا توجد مهام نشطة حالياً.');
+        }
+
+        const list = all.map(t => {
+            const typeEmoji = t.type === 'weekly' ? '📅' : '🗓️';
+            const lockTs = Math.floor(new Date(t.lock_at).getTime() / 1000);
+            return `${typeEmoji} **#${t.id}** ${t.title}\n   يقفل: <t:${lockTs}:R>`;
+        }).join('\n\n');
+
+        const embed = new EmbedBuilder()
+            .setColor(CONFIG.COLORS.primary)
+            .setTitle('📌 المهام النشطة')
+            .setDescription(list)
+            .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+    } catch (e) {
+        console.error('❌ task_list:', e);
+        await interaction.editReply(ERR).catch(() => {});
+    }
+}
+
+const commands = [
+    { data: taskCreateData, execute: taskCreateExecute },
+    { data: taskListData, execute: taskListExecute },
+];
+
+module.exports = { commands };

@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>محاولات — ملفي</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+
+:root {
+  --red:    #F15946;
+  --yellow: #F9C22E;
+  --slate:  #7286A0;
+  --green:  #3DD68C;
+
+  --bg:     #0C090D;
+  --surf:   #111013;
+  --lift:   #1A1720;
+  --ink:    #FBFEFB;
+  --ink2:   rgba(251,254,251,.44);
+  --ink3:   rgba(251,254,251,.13);
+  --line:   rgba(251,254,251,.075);
+  --linehi: rgba(251,254,251,.14);
+
+  --r:      rgba(241,89,70,.10);
+  --r2:     rgba(241,89,70,.20);
+  --g:      rgba(61,214,140,.10);
+  --g2:     rgba(61,214,140,.20);
+  --y:      rgba(249,194,46,.10);
+  --y2:     rgba(249,194,46,.20);
+}
+
+[data-theme="light"] {
+  --bg:     #F5F5F7;
+  --surf:   #FFFFFF;
+  --lift:   #EBEBED;
+  --ink:    #0C090D;
+  --ink2:   rgba(12,9,13,.46);
+  --ink3:   rgba(12,9,13,.13);
+  --line:   rgba(12,9,13,.07);
+  --linehi: rgba(12,9,13,.14);
+  --r:      rgba(241,89,70,.08);
+  --r2:     rgba(241,89,70,.18);
+  --g:      rgba(61,214,140,.08);
+  --g2:     rgba(61,214,140,.18);
+  --y:      rgba(249,194,46,.08);
+  --y2:     rgba(249,194,46,.18);
+}
+
+*,*::before,*::after { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+
+body {
+  font-family:'IBM Plex Sans Arabic',sans-serif;
+  background:var(--bg); color:var(--ink);
+  min-height:100dvh; overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+  transition:background .3s,color .3s;
+}
+
+/* grain */
+body::before {
+  content:''; position:fixed; inset:0; z-index:9000; pointer-events:none;
+  opacity:.018;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ── SCREENS ── */
+.screen {
+  position:fixed; inset:0; z-index:400;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:18px;
+  background:var(--bg);
+  transition:opacity .4s,visibility .4s;
+}
+.screen.gone { opacity:0; visibility:hidden; pointer-events:none; }
+.screen.off  { display:none; }
+
+.s-logo {
+  width:52px; height:52px; border-radius:14px;
+  background:var(--red); color:#fff;
+  display:flex; align-items:center; justify-content:center;
+  font-size:20px; font-weight:900;
+  animation:throb 2s ease-in-out infinite;
+}
+@keyframes throb {
+  0%,100%{box-shadow:0 0 0 0 rgba(241,89,70,.3);}
+  50%{box-shadow:0 0 0 10px rgba(241,89,70,.0);}
+}
+.s-spin {
+  width:20px; height:20px; border-radius:50%;
+  border:2px solid var(--line); border-top-color:var(--red);
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
+.s-txt { font-size:12px; color:var(--ink2); font-weight:500; }
+
+.inv-ico   { font-size:48px; }
+.inv-title { font-size:20px; font-weight:900; letter-spacing:-.5px; }
+.inv-sub   { font-size:13px; color:var(--ink2); line-height:1.65; text-align:center; max-width:260px; }
+
+/* ── SCROLL PROG ── */
+#pbar { position:fixed; top:0; left:0; right:0; z-index:300; height:2px; pointer-events:none; }
+#pfill { height:100%; width:0; background:var(--red); transition:width .05s linear; }
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━
+   PAGE WRAPPER
+━━━━━━━━━━━━━━━━━━━━━━━━ */
+#app {
+  display:none;
+  max-width:1040px; margin:0 auto;
+  padding:36px 24px 80px;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━
+   TOP NAV BAR
+━━━━━━━━━━━━━━━━━━━━━━━━ */
+.topbar {
+  display:flex; align-items:center; justify-content:space-between;
+  margin-bottom:32px;
+}
+
+.brand {
+  display:flex; align-items:center; gap:8px;
+  font-size:14px; font-weight:800; color:var(--ink);
+  text-decoration:none;
+}
+.brand-dot {
+  width:7px; height:7px; border-radius:50%; background:var(--red);
+  animation:throb 2.2s ease-in-out infinite;
+}
+
+.topbar-actions { display:flex; gap:8px; }
+.ibtn {
+  width:34px; height:34px; border-radius:9px;
+  border:1px solid var(--line); background:transparent;
+  color:var(--ink2); font-size:14px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:border-color .15s,color .15s,background .15s;
+  font-family:inherit;
+}
+.ibtn:hover { border-color:var(--linehi); color:var(--ink); background:var(--lift); }
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━
+   BENTO GRID
+━━━━━━━━━━━━━━━━━━━━━━━━ */
+.bento {
+  display:grid;
+  grid-template-columns: repeat(12, 1fr);
+  grid-auto-rows: 56px;
+  gap:12px;
+}
+
+/* CARDS BASE */
+.card {
+  background:var(--surf);
+  border:1px solid var(--line);
+  border-radius:18px;
+  padding:24px;
+  overflow:hidden;
+  position:relative;
+  transition:border-color .2s, transform .2s;
+}
+.card:hover { border-color:var(--linehi); }
+
+/* grid placements */
+.c-identity   { grid-column:1/6;  grid-row:1/5; }
+.c-streak     { grid-column:6/9;  grid-row:1/3; }
+.c-done       { grid-column:9/12; grid-row:1/3; }
+.c-freeze     { grid-column:12/13;grid-row:1/3; }
+.c-today      { grid-column:6/13; grid-row:3/5; }
+.c-goals      { grid-column:1/5;  grid-row:5/9; }
+.c-chart      { grid-column:5/9;  grid-row:5/9; }
+.c-ach        { grid-column:9/13; grid-row:5/9; }
+.c-habits     { grid-column:1/7;  grid-row:9/14;}
+.c-reports    { grid-column:7/13; grid-row:9/16;}
+.c-challenges { grid-column:1/7;  grid-row:14/18;}
+.c-lb         { grid-column:7/13; grid-row:16/20;}
+
+/* ── CARD INNER HELPERS ── */
+.card-label {
+  font-size:10px; font-weight:700; letter-spacing:1.8px;
+  text-transform:uppercase; color:var(--ink3);
+  margin-bottom:12px;
+}
+.card-big {
+  font-size:48px; font-weight:900; letter-spacing:-3px;
+  line-height:1; color:var(--ink);
+}
+.card-sub {
+  font-size:12px; color:var(--ink2); font-weight:500; margin-top:6px;
+}
+
+/* ── IDENTITY CARD ── */
+.id-avatar {
+  width:64px; height:64px; border-radius:18px;
+  background:var(--r); border:1px solid var(--r2);
+  display:flex; align-items:center; justify-content:center;
+  font-size:26px; font-weight:900; color:var(--red);
+  margin-bottom:16px;
+}
+.id-name {
+  font-size:26px; font-weight:900; letter-spacing:-.8px;
+  color:var(--ink); margin-bottom:10px;
+}
+.id-rank {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:4px 12px; border-radius:100px;
+  background:var(--y); border:1px solid var(--y2);
+  font-size:11px; font-weight:700; color:var(--yellow);
+  margin-bottom:20px;
+}
+.id-goal {
+  font-size:13px; color:var(--ink2); line-height:1.65;
+  padding-top:16px; border-top:1px solid var(--line);
+}
+.id-goal-label {
+  font-size:10px; font-weight:700; letter-spacing:1.5px;
+  text-transform:uppercase; color:var(--ink3); margin-bottom:6px;
+}
+.id-meta {
+  display:flex; flex-wrap:wrap; gap:8px; margin-top:16px;
+}
+.id-chip {
+  font-size:11px; font-weight:600; color:var(--ink2);
+  padding:4px 10px; border-radius:8px;
+  background:var(--lift); border:1px solid var(--line);
+}
+
+/* ── BIG NUMBER CARDS ── */
+.c-streak .card-big { color:var(--red); }
+.c-done   .card-big { color:var(--ink); }
+.c-freeze .card-big { color:var(--yellow); }
+.c-freeze { padding:16px 12px; }
+.c-freeze .card-label { font-size:9px; }
+.c-freeze .card-big   { font-size:28px; letter-spacing:-1px; }
+
+/* TODAY RATE */
+.c-today {
+  display:flex; align-items:center; justify-content:space-between; gap:20px;
+}
+.today-left {}
+.today-pct {
+  font-size:52px; font-weight:900; letter-spacing:-3px; color:var(--green);
+}
+.today-label { font-size:12px; color:var(--ink2); font-weight:500; margin-top:4px; }
+.today-track {
+  flex:1; height:6px; border-radius:3px;
+  background:var(--lift); overflow:hidden;
+  align-self:center;
+}
+.today-fill {
+  height:100%; width:0; border-radius:3px;
+  background:var(--green);
+  transition:width 1.2s cubic-bezier(.16,1,.3,1);
+}
+
+/* ── GOALS CARD ── */
+.goals-list { display:flex; flex-direction:column; gap:0; }
+.goal-row {
+  display:flex; align-items:flex-start; gap:12px;
+  padding:10px 0; border-bottom:1px solid var(--line);
+}
+.goal-row:last-child { border-bottom:none; padding-bottom:0; }
+.g-type {
+  font-size:9px; font-weight:800; letter-spacing:1.5px;
+  text-transform:uppercase; color:var(--ink3);
+  min-width:44px; padding-top:2px; flex-shrink:0;
+}
+.g-text { font-size:13px; color:var(--ink); line-height:1.5; font-weight:500; flex:1; }
+.g-nil  { color:var(--ink3); font-style:italic; font-weight:400; }
+
+/* ── CHART CARD ── */
+.chart-bars {
+  display:flex; align-items:flex-end; gap:6px;
+  height:80px; margin-top:8px;
+}
+.bc { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; }
+.bc-pct { font-size:9px; font-weight:700; color:var(--ink3); }
+.bc-bg  {
+  width:100%; border-radius:4px 4px 0 0;
+  background:var(--lift); height:60px;
+  display:flex; align-items:flex-end; overflow:hidden;
+}
+.bc-fill {
+  width:100%; border-radius:4px 4px 0 0;
+  background:var(--red);
+  transition:height .8s cubic-bezier(.16,1,.3,1);
+}
+.bc-fill.full { background:var(--green); }
+.bc-fill.mid  { background:var(--yellow); }
+.bc-day { font-size:9px; color:var(--ink3); font-weight:700; }
+.bc-today .bc-day   { color:var(--red); font-weight:900; }
+.bc-today .bc-fill  { background:var(--red); }
+
+/* ── ACHIEVEMENTS CARD ── */
+.ach-grid {
+  display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:8px;
+}
+.ach {
+  aspect-ratio:1; border-radius:12px;
+  background:var(--bg); border:1px solid var(--line);
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:3px;
+  transition:border-color .2s,background .2s;
+  cursor:default; padding:6px;
+}
+.ach.got  { background:var(--r); border-color:var(--r2); }
+.ach.miss { opacity:.28; }
+.ach-i { font-size:20px; }
+.ach-n { font-size:8px; font-weight:700; color:var(--ink2); text-align:center; }
+
+/* ── HABITS CARD ── */
+.h-top {
+  display:flex; align-items:center;
+  justify-content:space-between; margin-bottom:10px;
+}
+.h-pct { font-size:13px; font-weight:800; color:var(--red); }
+.h-track { height:3px; border-radius:2px; background:var(--lift); overflow:hidden; margin-bottom:12px; }
+.h-fill  { height:100%; width:0; border-radius:2px; background:var(--red); transition:width 1s cubic-bezier(.16,1,.3,1); }
+.h-fill.done { background:var(--green); }
+.h-list { display:flex; flex-direction:column; gap:7px; overflow-y:auto; max-height:180px; }
+.h-list::-webkit-scrollbar { width:3px; }
+.h-list::-webkit-scrollbar-track { background:transparent; }
+.h-list::-webkit-scrollbar-thumb { background:var(--linehi); border-radius:2px; }
+
+.h-item {
+  display:flex; align-items:center; gap:12px;
+  padding:11px 14px; border-radius:10px;
+  background:var(--bg); border:1px solid var(--line);
+  transition:border-color .15s;
+  flex-shrink:0;
+}
+.h-item.done { background:var(--g); border-color:var(--g2); }
+.h-chk {
+  width:20px; height:20px; border-radius:6px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:11px; font-weight:900; color:#0C090D;
+}
+.h-chk.y { background:var(--green); }
+.h-chk.n { border:1.5px solid var(--linehi); }
+.h-name { font-size:13px; font-weight:600; color:var(--ink); flex:1; }
+.h-name.done { color:var(--ink2); text-decoration:line-through; }
+
+/* ── REPORTS CARD ── */
+.tab-bar {
+  display:flex; border-bottom:1px solid var(--line);
+  margin:0 -24px 0; padding:0 24px;
+  margin-bottom:16px;
+}
+.tab {
+  padding:8px 12px; font-size:11px; font-weight:700;
+  color:var(--ink2); background:transparent; border:none;
+  border-bottom:2px solid transparent;
+  cursor:pointer; transition:color .15s,border-color .15s;
+  font-family:inherit; letter-spacing:.2px;
+}
+.tab.on { color:var(--red); border-bottom-color:var(--red); }
+
+.pane { display:none; overflow-y:auto; max-height:220px; }
+.pane.on { display:block; }
+.pane::-webkit-scrollbar { width:3px; }
+.pane::-webkit-scrollbar-thumb { background:var(--linehi); border-radius:2px; }
+
+.rpt-item {
+  padding:14px 0; border-bottom:1px solid var(--line);
+}
+.rpt-item:last-child { border-bottom:none; }
+.rpt-head { display:flex; justify-content:space-between; margin-bottom:6px; }
+.rpt-date  { font-size:11px; font-weight:700; color:var(--ink2); }
+.rpt-words { font-size:11px; color:var(--ink3); }
+.rpt-text  {
+  font-size:13px; color:var(--ink); line-height:1.6;
+  display:-webkit-box; -webkit-line-clamp:2;
+  -webkit-box-orient:vertical; overflow:hidden;
+}
+
+.empty { font-size:13px; color:var(--ink3); text-align:center; padding:28px 0; font-style:italic; }
+
+/* ── CHALLENGES ── */
+.ch-list { display:flex; flex-direction:column; gap:8px; overflow-y:auto; max-height:160px; }
+.ch-list::-webkit-scrollbar { width:3px; }
+.ch-list::-webkit-scrollbar-thumb { background:var(--linehi); border-radius:2px; }
+
+.ch-item {
+  background:var(--bg); border:1px solid var(--line);
+  border-radius:11px; padding:13px 14px;
+  transition:border-color .15s;
+  flex-shrink:0;
+}
+.ch-item:hover { border-color:var(--linehi); }
+.ch-top2 { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.ch-name  { font-size:13px; font-weight:800; color:var(--ink); }
+.ch-badge {
+  font-size:9px; font-weight:700; letter-spacing:1px;
+  text-transform:uppercase; padding:3px 8px; border-radius:100px;
+}
+.ch-badge.live { background:var(--g); color:var(--green); border:1px solid var(--g2); }
+.ch-badge.over { background:var(--lift); color:var(--ink3); border:1px solid var(--line); }
+.ch-bar  { height:3px; border-radius:2px; background:var(--lift); overflow:hidden; margin-bottom:7px; }
+.ch-fill { height:100%; border-radius:2px; background:var(--red); }
+.ch-foot { display:flex; justify-content:space-between; }
+.ch-days { font-size:11px; color:var(--ink2); font-weight:600; }
+.ch-pct  { font-size:11px; color:var(--red); font-weight:800; }
+
+/* ── LEADERBOARD ── */
+.lb-list { display:flex; flex-direction:column; overflow-y:auto; max-height:240px; }
+.lb-list::-webkit-scrollbar { width:3px; }
+.lb-list::-webkit-scrollbar-thumb { background:var(--linehi); border-radius:2px; }
+
+.lb-row {
+  display:flex; align-items:center; gap:12px;
+  padding:11px 0; border-bottom:1px solid var(--line);
+  transition:background .15s;
+}
+.lb-row:last-child { border-bottom:none; }
+.lb-row.me { background:var(--r); border-radius:8px; padding:11px 8px; }
+.lb-pos  { font-size:13px; font-weight:900; color:var(--ink3); width:26px; flex-shrink:0; }
+.lb-name { font-size:13px; font-weight:700; color:var(--ink); flex:1; }
+.lb-me-tag {
+  font-size:9px; color:var(--red); font-weight:700;
+  background:var(--r); border:1px solid var(--r2);
+  padding:2px 8px; border-radius:100px;
+}
+.lb-st   { font-size:11px; color:var(--ink2); font-weight:600; }
+.lb-rate { font-size:12px; font-weight:800; color:var(--ink); min-width:36px; text-align:left; }
+
+/* ── ANIMATIONS ── */
+.up {
+  opacity:0; transform:translateY(16px);
+  transition:opacity .55s ease, transform .55s ease;
+}
+.up.in { opacity:1; transform:none; }
+.up.d1{transition-delay:.04s}
+.up.d2{transition-delay:.08s}
+.up.d3{transition-delay:.12s}
+.up.d4{transition-delay:.16s}
+.up.d5{transition-delay:.20s}
+.up.d6{transition-delay:.24s}
+.up.d7{transition-delay:.28s}
+.up.d8{transition-delay:.32s}
+.up.d9{transition-delay:.36s}
+
+/* ── RESPONSIVE ── */
+@media(max-width:900px) {
+  .bento {
+    grid-template-columns:1fr 1fr;
+    grid-auto-rows:auto;
+  }
+  .c-identity,.c-goals,.c-habits,.c-reports,
+  .c-challenges,.c-lb { grid-column:1/3; grid-row:auto; }
+  .c-streak,.c-done   { grid-column:span 1; grid-row:auto; }
+  .c-freeze,.c-today  { grid-column:span 1; grid-row:auto; }
+  .c-chart,.c-ach     { grid-column:span 1; grid-row:auto; }
+
+  .today-track { display:none; }
+  .c-today { flex-direction:column; align-items:flex-start; gap:10px; }
+}
+
+@media(max-width:500px) {
+  #app { padding:20px 14px 60px; }
+  .bento { grid-template-columns:1fr; gap:10px; }
+  .c-identity,.c-streak,.c-done,.c-freeze,.c-today,
+  .c-goals,.c-chart,.c-ach,.c-habits,.c-reports,
+  .c-challenges,.c-lb { grid-column:1; grid-row:auto; }
+}
+</style>
+</head>
+<body>
+
+<div id="pbar"><div id="pfill"></div></div>
+
+<!-- LOADING -->
+<div class="screen" id="scr-load">
+  <div class="s-logo">م</div>
+  <div class="s-spin"></div>
+  <div class="s-txt">جاري تحميل ملفك...</div>
+</div>
+
+<!-- INVALID -->
+<div class="screen off" id="scr-inv">
+  <div class="inv-ico">🔒</div>
+  <div class="inv-title">الرابط غير صالح</div>
+  <div class="inv-sub">انتهت صلاحية هذا الرابط أو أنه غير صحيح.<br>تواصل مع الأدمن للحصول على رابط جديد.</div>
+</div>
+
+<!-- APP -->
+<div id="app">
+
+  <!-- TOP BAR -->
+  <div class="topbar up">
+    <a href="/" class="brand">
+      <div class="brand-dot"></div>
+      محاولات
+    </a>
+    <div class="topbar-actions">
+      <button class="ibtn" id="tbtn" onclick="toggleTheme()">🌙</button>
+    </div>
+  </div>
+
+  <!-- BENTO -->
+  <div class="bento">
+
+    <!-- IDENTITY -->
+    <div class="card c-identity up d1">
+      <div class="id-avatar" id="id-ava">م</div>
+      <div class="id-name"    id="id-name">—</div>
+      <div class="id-rank"    id="id-rank">🌱 بداية الرحلة</div>
+      <div class="id-goal">
+        <div class="id-goal-label">هدف السنة</div>
+        <div id="id-goal-text">لم تحدد هدفاً بعد</div>
+      </div>
+      <div class="id-meta" id="id-meta"></div>
+    </div>
+
+    <!-- STREAK -->
+    <div class="card c-streak up d2">
+      <div class="card-label">الستريك 🔥</div>
+      <div class="card-big" id="v-streak">0</div>
+      <div class="card-sub">يوم متواصل</div>
+    </div>
+
+    <!-- TOTAL -->
+    <div class="card c-done up d2">
+      <div class="card-label">إجمالي العادات</div>
+      <div class="card-big" id="v-total">0</div>
+      <div class="card-sub">عادة منجزة</div>
+    </div>
+
+    <!-- FREEZE -->
+    <div class="card c-freeze up d2">
+      <div class="card-label">Freeze ❄️</div>
+      <div class="card-big" id="v-freeze">0</div>
+    </div>
+
+    <!-- TODAY RATE -->
+    <div class="card c-today up d3">
+      <div class="today-left">
+        <div class="card-label">إنجاز اليوم</div>
+        <div class="today-pct" id="v-today">0%</div>
+        <div class="today-label">من عاداتك اليوم</div>
+      </div>
+      <div class="today-track">
+        <div class="today-fill" id="today-fill"></div>
+      </div>
+    </div>
+
+    <!-- GOALS -->
+    <div class="card c-goals up d4">
+      <div class="card-label">الأهداف</div>
+      <div class="goals-list" id="goals"></div>
+    </div>
+
+    <!-- CHART -->
+    <div class="card c-chart up d4">
+      <div class="card-label">أداء الأسبوع</div>
+      <div class="chart-bars" id="chart"></div>
+    </div>
+
+    <!-- ACHIEVEMENTS -->
+    <div class="card c-ach up d4">
+      <div class="card-label">الإنجازات</div>
+      <div class="ach-grid" id="ach"></div>
+    </div>
+
+    <!-- HABITS -->
+    <div class="card c-habits up d5">
+      <div class="h-top">
+        <div class="card-label" style="margin-bottom:0">عادات اليوم</div>
+        <div class="h-pct" id="h-pct">0%</div>
+      </div>
+      <div class="h-track"><div class="h-fill" id="h-fill"></div></div>
+      <div class="h-list" id="h-list">
+        <div class="empty">لا توجد عادات بعد</div>
+      </div>
+    </div>
+
+    <!-- REPORTS -->
+    <div class="card c-reports up d5">
+      <div class="card-label">التقارير</div>
+      <div class="tab-bar">
+        <button class="tab on" data-p="d" onclick="setTab(this)">يومية</button>
+        <button class="tab"    data-p="w" onclick="setTab(this)">أسبوعية</button>
+        <button class="tab"    data-p="m" onclick="setTab(this)">شهرية</button>
+        <button class="tab"    data-p="y" onclick="setTab(this)">سنوية</button>
+      </div>
+      <div class="pane on" id="pane-d"><div class="empty">جاري التحميل...</div></div>
+      <div class="pane"    id="pane-w"><div class="empty">جاري التحميل...</div></div>
+      <div class="pane"    id="pane-m"><div class="empty">جاري التحميل...</div></div>
+      <div class="pane"    id="pane-y"><div class="empty">جاري التحميل...</div></div>
+    </div>
+
+    <!-- CHALLENGES -->
+    <div class="card c-challenges up d7">
+      <div class="card-label">التحديات</div>
+      <div class="ch-list" id="ch-list">
+        <div class="empty">لم تشارك في أي تحدي بعد</div>
+      </div>
+    </div>
+
+    <!-- LEADERBOARD -->
+    <div class="card c-lb up d8">
+      <div class="card-label">لوحة الشرف</div>
+      <div class="lb-list" id="lb">
+        <div class="empty">جاري التحميل...</div>
+      </div>
+    </div>
+
+  </div><!-- /bento -->
+</div><!-- /app -->
+
+<script>
+/* ── CONSTANTS ── */
+const ACHS = [
+  {type:'first_day',      icon:'🌱', name:'أول خطوة'},
+  {type:'week_streak',    icon:'🔥', name:'أسبوع'},
+  {type:'month_streak',   icon:'💎', name:'ماسة'},
+  {type:'century_streak', icon:'👑', name:'الملك'},
+  {type:'century_tasks',  icon:'💯', name:'المئة'},
+  {type:'half_k_tasks',   icon:'⭐', name:'نجم'},
+  {type:'thousand_tasks', icon:'🏆', name:'أسطورة'},
+];
+const DAYS = ['أحد','اثن','ثلث','أرب','خمس','جمع','سبت'];
+
+/* ── THEME ── */
+let dark = true;
+function toggleTheme() {
+  dark = !dark;
+  document.documentElement.setAttribute('data-theme', dark?'':'light');
+  document.getElementById('tbtn').textContent = dark?'🌙':'☀️';
+}
+
+/* ── SCROLL PROG ── */
+window.addEventListener('scroll', () => {
+  const d = document.documentElement;
+  document.getElementById('pfill').style.width =
+    (d.scrollTop / (d.scrollHeight - d.clientHeight) * 100) + '%';
+}, {passive:true});
+
+/* ── TABS ── */
+function setTab(btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+  document.querySelectorAll('.pane').forEach(p => p.classList.remove('on'));
+  btn.classList.add('on');
+  document.getElementById('pane-' + btn.dataset.p).classList.add('on');
+}
+
+/* ── SCROLL REVEAL ── */
+const io = new IntersectionObserver(
+  es => es.forEach(e => { if(e.isIntersecting) e.target.classList.add('in'); }),
+  {threshold:.05}
+);
+
+/* ── RENDERERS ── */
+function renderIdentity(id) {
+  if (!id) return;
+  document.getElementById('id-ava').textContent  = (id.name||'م')[0];
+  document.getElementById('id-name').textContent = id.name || '—';
+  document.getElementById('id-rank').textContent = (id.rank_emoji||'🌱')+' '+(id.rank||'بداية الرحلة');
+  document.getElementById('v-streak').textContent = id.streak ?? 0;
+  document.getElementById('v-total').textContent  = id.total_done ?? 0;
+  document.getElementById('v-freeze').textContent = id.streak_freeze ?? 0;
+  document.title = 'محاولات — ' + (id.name||'ملفي');
+
+  // meta chips
+  const chips = [];
+  if (id.created_at) chips.push('🗓 ' + id.created_at.split('T')[0]);
+  if (id.warning_count) chips.push('⚠️ ' + id.warning_count + ' إنذار');
+  if (id.daily_review_count) chips.push('📝 ' + id.daily_review_count + ' مراجعة');
+  document.getElementById('id-meta').innerHTML =
+    chips.map(c=>`<div class="id-chip">${c}</div>`).join('');
+}
+
+function renderGoals(tree) {
+  if (!tree) return;
+  const el = document.getElementById('goals');
+  const rows = [];
+  const y = (tree.yearly||[]).map(g=>g.goal_text).join(' · ');
+  // annual goal also shown in identity card
+  document.getElementById('id-goal-text').textContent = y || 'لم تحدد هدفاً بعد';
+
+  rows.push(`<div class="goal-row">
+    <div class="g-type">سنة</div>
+    <div class="g-text ${y?'':'g-nil'}">${y||'لم تحدد بعد'}</div></div>`);
+
+  (tree.monthly||[]).forEach(g => rows.push(`<div class="goal-row">
+    <div class="g-type">شهر</div>
+    <div class="g-text">${g.goal_text}</div></div>`));
+  if (!(tree.monthly||[]).length) rows.push(`<div class="goal-row">
+    <div class="g-type">شهر</div>
+    <div class="g-text g-nil">لم تحدد بعد</div></div>`);
+
+  (tree.weekly||[]).forEach(g => rows.push(`<div class="goal-row">
+    <div class="g-type">أسبوع</div>
+    <div class="g-text">${g.goal_text}</div></div>`));
+  if (!(tree.weekly||[]).length) rows.push(`<div class="goal-row">
+    <div class="g-type">أسبوع</div>
+    <div class="g-text g-nil">لم تحدد بعد</div></div>`);
+
+  el.innerHTML = rows.join('');
+}
+
+function renderHabits(habits, rate) {
+  const pct = rate || 0;
+  document.getElementById('h-pct').textContent = pct + '%';
+  document.getElementById('v-today').textContent = pct + '%';
+  setTimeout(() => {
+    const f = document.getElementById('h-fill');
+    const t = document.getElementById('today-fill');
+    f.style.width = pct + '%';
+    t.style.width = pct + '%';
+    if (pct >= 100) f.classList.add('done');
+  }, 150);
+
+  const el = document.getElementById('h-list');
+  if (!habits?.length) {
+    el.innerHTML = '<div class="empty">لا توجد عادات بعد</div>'; return;
+  }
+  el.innerHTML = habits.map(h => `
+    <div class="h-item ${h.completed?'done':''}">
+      <div class="h-chk ${h.completed?'y':'n'}">${h.completed?'✓':''}</div>
+      <div class="h-name ${h.completed?'done':''}">${h.name}</div>
+    </div>`).join('');
+}
+
+function renderChart(data) {
+  const el = document.getElementById('chart');
+  if (!data?.length) {
+    el.innerHTML = '<div class="empty" style="margin:auto">لا توجد بيانات</div>'; return;
+  }
+  el.style.cssText = 'display:flex;align-items:flex-end;gap:6px;height:80px;margin-top:8px;';
+  const today = new Date().getDay();
+  el.innerHTML = data.map(d => {
+    const r = Math.round(d.rate||0);
+    const di = new Date(d.date).getDay();
+    const isT = di === today;
+    const cls = r >= 100 ? 'full' : r >= 60 ? 'mid' : '';
+    return `<div class="bc ${isT?'bc-today':''}">
+      <div class="bc-pct">${r}%</div>
+      <div class="bc-bg"><div class="bc-fill ${cls}" style="height:${Math.max(r,4)}%"></div></div>
+      <div class="bc-day">${DAYS[di]||''}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderAchs(earned) {
+  const s = new Set((earned||[]).map(a=>a.type));
+  document.getElementById('ach').innerHTML = ACHS.map(a => `
+    <div class="ach ${s.has(a.type)?'got':'miss'}" title="${a.name}">
+      <div class="ach-i">${a.icon}</div>
+      <div class="ach-n">${a.name}</div>
+    </div>`).join('');
+}
+
+function buildRptHTML(items) {
+  if (!items?.length) return '<div class="empty">لا توجد تقارير بعد</div>';
+  return items.map(r => `
+    <div class="rpt-item">
+      <div class="rpt-head">
+        <div class="rpt-date">${r.report_date||''}</div>
+        ${r.word_count?`<div class="rpt-words">${r.word_count} كلمة</div>`:''}
+      </div>
+      <div class="rpt-text">${r.content||'—'}</div>
+    </div>`).join('');
+}
+
+function renderReports(rpts) {
+  document.getElementById('pane-d').innerHTML = buildRptHTML(rpts?.daily);
+  document.getElementById('pane-w').innerHTML = buildRptHTML(rpts?.weekly);
+  document.getElementById('pane-m').innerHTML = buildRptHTML(rpts?.monthly);
+  document.getElementById('pane-y').innerHTML = buildRptHTML(rpts?.yearly);
+}
+
+function renderChallenges(chs) {
+  const el = document.getElementById('ch-list');
+  if (!chs?.length) {
+    el.innerHTML = '<div class="empty">لم تشارك في أي تحدي بعد</div>'; return;
+  }
+  el.innerHTML = chs.map(c => {
+    const pct = Math.min(c.percent||0, 100);
+    return `<div class="ch-item">
+      <div class="ch-top2">
+        <div class="ch-name">${c.title}</div>
+        <div class="ch-badge ${c.status==='active'?'live':'over'}">${c.status==='active'?'نشط':'منتهي'}</div>
+      </div>
+      <div class="ch-bar"><div class="ch-fill" style="width:${pct}%"></div></div>
+      <div class="ch-foot">
+        <div class="ch-days">${c.daysLogged} / ${c.totalDays} يوم</div>
+        <div class="ch-pct">${pct}%</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderLB(list) {
+  const el = document.getElementById('lb');
+  if (!list?.length) { el.innerHTML = '<div class="empty">لا يوجد ترتيب</div>'; return; }
+  const m = ['🥇','🥈','🥉'];
+  el.innerHTML = list.slice(0,10).map((l,i) => `
+    <div class="lb-row ${l.isMe?'me':''}">
+      <div class="lb-pos">${m[i]||(i+1)}</div>
+      <div class="lb-name">${l.name}</div>
+      ${l.isMe?'<div class="lb-me-tag">أنت</div>':''}
+      <div class="lb-st">🔥 ${l.streak}</div>
+      <div class="lb-rate">${l.avgRate}%</div>
+    </div>`).join('');
+}
+
+/* ── INIT ── */
+const TOKEN = new URLSearchParams(location.search).get('token');
+
+async function init() {
+  if (!TOKEN) return showInv();
+  try {
+    const [meR, lbR] = await Promise.all([
+      fetch('/api/member/me',          {headers:{'x-member-token':TOKEN}}),
+      fetch('/api/member/leaderboard', {headers:{'x-member-token':TOKEN}}),
+    ]);
+    if (!meR.ok) return showInv();
+    const data = await meR.json();
+    const lb   = lbR.ok ? await lbR.json() : [];
+
+    renderIdentity(data.identity);
+    renderGoals(data.goals_tree);
+    renderHabits(data.habits_today, data.today_rate);
+    renderChart(data.weekly_chart_data);
+    renderAchs(data.achievements);
+    renderReports(data.reports ?? {
+      daily:  data.recent_reports||[], weekly:[], monthly:[], yearly:[]
+    });
+    renderChallenges(data.challenges_progress);
+    renderLB(lb);
+
+    document.getElementById('scr-load').classList.add('gone');
+    const app = document.getElementById('app');
+    app.style.display = 'block';
+    setTimeout(() => document.querySelectorAll('.up').forEach(el => io.observe(el)), 80);
+
+  } catch(e) { console.error(e); showInv(); }
+}
+
+function showInv() {
+  document.getElementById('scr-load').classList.add('gone');
+  const s = document.getElementById('scr-inv');
+  s.classList.remove('off');
+  s.style.display = 'flex';
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

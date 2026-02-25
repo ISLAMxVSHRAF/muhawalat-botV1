@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>محاولات</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0C0C0F;--orange:#F26450;--yellow:#F5C842;--green:#3DD68C;
+  --text:#E8E8EE;--muted:#55556A;--dim:#888899;
+  --glass:rgba(255,255,255,.038);--border:rgba(255,255,255,.07);
+  --blur:saturate(180%) blur(22px);
+  --glow-o:0 0 60px rgba(242,100,80,.25);
+  --ease-s:cubic-bezier(.34,1.56,.64,1);--ease-o:cubic-bezier(.16,1,.3,1);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;}
+body{font-family:'Tajawal',sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;overflow:hidden;-webkit-font-smoothing:antialiased;}
+body::after{content:'';position:fixed;inset:0;z-index:9999;pointer-events:none;opacity:.03;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");background-size:180px;}
+#ambi{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;}
+.blob{position:absolute;border-radius:50%;filter:blur(100px);mix-blend-mode:screen;animation:drift 20s ease-in-out infinite alternate;}
+.b1{width:600px;height:600px;background:rgba(242,100,80,.06);top:-200px;right:-150px;animation-duration:22s;}
+.b2{width:480px;height:480px;background:rgba(245,200,66,.045);bottom:5%;left:-120px;animation-duration:28s;animation-direction:alternate-reverse;}
+@keyframes drift{from{transform:translate(0,0) scale(1)}to{transform:translate(40px,60px) scale(1.07)}}
+
+.wrap{position:relative;z-index:1;text-align:center;max-width:420px;width:100%;animation:popIn .6s cubic-bezier(.34,1.56,.64,1) both;}
+@keyframes popIn{from{opacity:0;transform:scale(.92) translateY(24px)}to{opacity:1;transform:none}}
+
+.logo{width:72px;height:72px;background:var(--orange);border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 28px;box-shadow:var(--glow-o);animation:lp 3s ease-in-out infinite;}
+@keyframes lp{0%,100%{box-shadow:0 0 30px rgba(242,100,80,.3)}50%{box-shadow:0 0 70px rgba(242,100,80,.5)}}
+
+h1{font-size:40px;font-weight:900;letter-spacing:-1.5px;line-height:1;margin-bottom:10px;}
+.sub{font-size:14px;color:var(--dim);margin-bottom:36px;line-height:1.6;}
+
+.btns{display:flex;flex-direction:column;gap:10px;}
+.btn{display:flex;align-items:center;justify-content:center;gap:9px;padding:16px 24px;border-radius:14px;font-size:15px;font-weight:700;font-family:inherit;text-decoration:none;transition:all .25s;border:none;cursor:pointer;}
+.bp{background:var(--orange);color:#fff;box-shadow:var(--glow-o);}
+.bp:hover{opacity:.9;transform:translateY(-2px);box-shadow:0 0 80px rgba(242,100,80,.35);}
+.bg{background:var(--glass);color:var(--text);border:1px solid var(--border);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);}
+.bg:hover{border-color:rgba(255,255,255,.15);background:rgba(255,255,255,.06);}
+
+.divider{display:flex;align-items:center;gap:12px;margin:4px 0;color:var(--muted);font-size:12px;}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border);}
+
+.foot{margin-top:28px;font-size:11px;color:var(--muted);}
+
+@media(max-width:400px){h1{font-size:32px;}}
+</style>
+</head>
+<body>
+<div id="ambi"><div class="blob b1"></div><div class="blob b2"></div></div>
+<div class="wrap">
+  <div class="logo">✳️</div>
+  <h1>محـاولات</h1>
+  <div class="sub">منصة متابعة العادات اليومية لمجتمعك</div>
+  <div class="btns">
+    <a href="/admin.html" class="btn bp">👑 &nbsp;لوحة تحكم الأدمن</a>
+    <div class="divider">أو</div>
+    <a href="/docs.html" class="btn bg">📖 &nbsp;دليل البوت الشامل</a>
+  </div>
+  <div class="foot">Muhawalat Bot v7.2 · Built with ❤️</div>
+</div>
+</body>
+</html>

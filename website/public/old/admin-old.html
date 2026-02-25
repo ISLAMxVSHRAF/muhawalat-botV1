@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>محاولات — لوحة الأدمن</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --orange:#F15946; --orange-dim:rgba(241,89,70,.15); --orange-glow:rgba(241,89,70,.25);
+  --yellow:#F9C22E; --yellow-dim:rgba(249,194,46,.12);
+  --black:#080808; --surface:rgba(18,18,18,.95); --card:rgba(22,22,22,.9); --card2:#1e1e1e;
+  --border:rgba(255,255,255,.07); --border-hover:rgba(241,89,70,.3);
+  --text:#F0F0F0; --muted:#666;
+  --green:#3ECF8E; --red:#F04747; --blue:#5865F2;
+  --glass-bg:rgba(255,255,255,.04); --glass-border:rgba(255,255,255,.09);
+  --glass-blur:blur(20px);
+  --glow-o:0 0 40px rgba(241,89,70,.2); --glow-y:0 0 40px rgba(249,194,46,.15);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{font-family:'IBM Plex Sans Arabic',sans-serif;background:var(--black);color:var(--text);min-height:100vh;overflow-x:hidden;}
+
+/* NOISE */
+body::before{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E");pointer-events:none;z-index:0;}
+
+/* AMBIENT */
+.amb{position:fixed;border-radius:50%;filter:blur(140px);pointer-events:none;z-index:0;}
+.amb-1{width:700px;height:700px;background:rgba(241,89,70,.07);top:-300px;right:-200px;animation:drift 14s ease-in-out infinite alternate;}
+.amb-2{width:500px;height:500px;background:rgba(249,194,46,.05);bottom:10%;left:-150px;animation:drift 18s ease-in-out infinite alternate-reverse;}
+@keyframes drift{from{transform:translate(0,0)}to{transform:translate(50px,70px)}}
+
+/* ── LOGIN ──────────────────────────────────── */
+#login-screen{position:fixed;inset:0;background:var(--black);display:flex;align-items:center;justify-content:center;z-index:1000;}
+.login-box{
+  width:100%;max-width:400px;padding:48px 40px;
+  background:var(--glass-bg);backdrop-filter:var(--glass-blur);
+  border:1px solid var(--glass-border);border-radius:24px;text-align:center;
+  box-shadow:0 32px 80px rgba(0,0,0,.5);
+  animation:popIn .5s cubic-bezier(.34,1.56,.64,1) both;
+}
+@keyframes popIn{from{opacity:0;transform:scale(.9) translateY(20px)}to{opacity:1;transform:none}}
+
+.login-logo{
+  width:60px;height:60px;background:var(--orange);border-radius:16px;
+  display:flex;align-items:center;justify-content:center;font-size:28px;
+  margin:0 auto 24px;box-shadow:var(--glow-o);
+  animation:pulse-glow 3s ease-in-out infinite;
+}
+@keyframes pulse-glow{0%,100%{box-shadow:0 0 20px rgba(241,89,70,.4)}50%{box-shadow:0 0 40px rgba(241,89,70,.7)}}
+
+.login-box h1{font-size:26px;font-weight:700;letter-spacing:-.5px;margin-bottom:6px;}
+.login-box p{font-size:13px;color:var(--muted);margin-bottom:32px;}
+.login-input{
+  width:100%;background:rgba(255,255,255,.05);border:1px solid var(--glass-border);
+  color:var(--text);padding:14px 18px;border-radius:12px;
+  font-size:15px;font-family:inherit;margin-bottom:12px;outline:none;
+  transition:border-color .2s,box-shadow .2s;text-align:center;direction:ltr;
+}
+.login-input:focus{border-color:var(--orange);box-shadow:0 0 0 3px rgba(241,89,70,.15);}
+.login-btn{
+  width:100%;background:var(--orange);color:#fff;border:none;
+  padding:14px;border-radius:12px;font-size:15px;font-weight:700;
+  font-family:inherit;cursor:pointer;transition:all .2s;
+  box-shadow:var(--glow-o);
+}
+.login-btn:hover{opacity:.9;transform:translateY(-1px);}
+.login-btn:active{transform:scale(.98);}
+.login-error{color:var(--red);font-size:13px;margin-top:10px;display:none;}
+
+/* ── APP LAYOUT ─────────────────────────────── */
+#app{display:none;min-height:100vh;position:relative;z-index:1;}
+
+/* SIDEBAR */
+.sidebar{
+  position:fixed;top:0;right:0;bottom:0;width:248px;
+  background:var(--glass-bg);backdrop-filter:var(--glass-blur);
+  border-left:1px solid var(--glass-border);
+  display:flex;flex-direction:column;z-index:50;padding:24px 0;
+  transition:transform .3s;
+}
+.sidebar-logo{padding:0 20px 24px;border-bottom:1px solid var(--glass-border);display:flex;align-items:center;gap:12px;}
+.logo-icon{
+  width:38px;height:38px;background:var(--orange);border-radius:10px;
+  display:flex;align-items:center;justify-content:center;font-size:17px;
+  box-shadow:var(--glow-o);
+}
+.logo-name{font-size:17px;font-weight:700;letter-spacing:-.3px;}
+.logo-v{font-size:10px;color:var(--orange);opacity:.8;margin-top:2px;}
+
+.nav{flex:1;padding:16px 12px;overflow-y:auto;}
+.nav-lbl{font-size:10px;color:var(--muted);letter-spacing:.09em;text-transform:uppercase;padding:0 8px;margin:14px 0 6px;}
+.nav-item{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 12px;border-radius:10px;font-size:13px;
+  cursor:pointer;color:var(--muted);transition:all .15s;
+  border:none;background:transparent;width:100%;text-align:right;font-family:inherit;
+}
+.nav-item:hover{background:rgba(255,255,255,.05);color:var(--text);}
+.nav-item.active{background:rgba(241,89,70,.12);color:var(--orange);box-shadow:inset 0 0 0 1px rgba(241,89,70,.2);}
+.nav-icon{font-size:15px;width:20px;text-align:center;}
+
+.sidebar-foot{padding:16px 20px 0;border-top:1px solid var(--glass-border);}
+.status-pill{display:flex;align-items:center;gap:10px;font-size:12px;}
+.status-dot{width:7px;height:7px;background:var(--green);border-radius:50%;flex-shrink:0;box-shadow:0 0 8px var(--green);animation:blink 2s ease-in-out infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* MAIN */
+.main{margin-right:248px;min-height:100vh;padding:32px 36px;}
+
+/* TOPBAR */
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;}
+.page-title{font-size:22px;font-weight:700;letter-spacing:-.5px;}
+.page-sub{font-size:12px;color:var(--muted);margin-top:3px;}
+
+/* ── GLASS CARDS ────────────────────────────── */
+.glass-card{
+  background:var(--glass-bg);backdrop-filter:var(--glass-blur);
+  border:1px solid var(--glass-border);border-radius:18px;
+  position:relative;overflow:hidden;transition:all .3s;
+}
+.glass-card::before{
+  content:'';position:absolute;top:0;right:0;left:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.12),transparent);
+}
+.glass-card:hover{border-color:rgba(241,89,70,.25);box-shadow:0 8px 40px rgba(241,89,70,.08);}
+
+/* ── STATS GRID ─────────────────────────────── */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:14px;margin-bottom:24px;}
+.stat-card{
+  background:var(--glass-bg);backdrop-filter:var(--glass-blur);
+  border:1px solid var(--glass-border);border-radius:16px;
+  padding:22px 20px;position:relative;overflow:hidden;
+  transition:all .3s;
+  animation:fadeUp .5s ease both;
+}
+.stat-card:hover{transform:translateY(-3px);box-shadow:var(--glow-o);}
+.stat-card::after{
+  content:'';position:absolute;bottom:0;right:0;left:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--accent,var(--orange)),transparent);
+  opacity:.5;
+}
+.stat-card.g{--accent:var(--green);}
+.stat-card.r{--accent:var(--red);}
+.stat-card.y{--accent:var(--yellow);}
+.stat-card.b{--accent:var(--blue);}
+
+.stat-label{font-size:11px;color:var(--muted);margin-bottom:10px;}
+.stat-num{
+  font-size:34px;font-weight:700;line-height:1;
+  background:linear-gradient(135deg,var(--text),rgba(255,255,255,.6));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}
+.stat-num.accent{background:linear-gradient(135deg,var(--accent,var(--orange)),var(--yellow));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.stat-sub{font-size:11px;color:var(--muted);margin-top:6px;}
+
+/* ── TABLE ──────────────────────────────────── */
+.section-card{
+  background:var(--glass-bg);backdrop-filter:var(--glass-blur);
+  border:1px solid var(--glass-border);border-radius:18px;
+  overflow:hidden;margin-bottom:20px;
+}
+.section-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:18px 22px;border-bottom:1px solid var(--glass-border);
+}
+.section-head-title{font-size:14px;font-weight:700;}
+.table-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;}
+th{text-align:right;padding:10px 18px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--glass-border);font-weight:500;white-space:nowrap;}
+td{padding:13px 18px;font-size:13px;border-bottom:1px solid rgba(255,255,255,.03);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr{transition:background .15s;}
+tr:hover td{background:rgba(255,255,255,.02);}
+
+/* ── BADGES ─────────────────────────────────── */
+.badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:100px;font-size:11px;font-weight:500;}
+.bg{background:rgba(62,207,142,.1);color:var(--green);}
+.br{background:rgba(240,71,71,.1);color:var(--red);}
+.bo{background:rgba(241,89,70,.1);color:var(--orange);}
+.by{background:rgba(249,194,46,.1);color:var(--yellow);}
+.bm{background:rgba(255,255,255,.05);color:var(--muted);}
+
+/* STREAK BAR */
+.streak-bar{display:flex;align-items:center;gap:8px;min-width:120px;}
+.bar-track{flex:1;height:4px;background:rgba(255,255,255,.07);border-radius:10px;overflow:hidden;}
+.bar-fill{height:100%;background:linear-gradient(90deg,var(--orange),var(--yellow));border-radius:10px;transition:width .8s cubic-bezier(.34,1.56,.64,1);}
+
+/* WARN PIPS */
+.pips{display:flex;gap:4px;}
+.pip{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.1);}
+.pip.on{background:var(--red);box-shadow:0 0 6px rgba(240,71,71,.6);}
+
+/* ── BTNS ───────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 18px;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border:none;transition:all .2s;}
+.btn-p{background:var(--orange);color:#fff;box-shadow:var(--glow-o);}
+.btn-p:hover{opacity:.9;transform:translateY(-1px);}
+.btn-g{background:var(--glass-bg);backdrop-filter:var(--glass-blur);color:var(--text);border:1px solid var(--glass-border);}
+.btn-g:hover{border-color:rgba(255,255,255,.18);}
+
+/* ── SEARCH ─────────────────────────────────── */
+.search-bar{display:flex;gap:10px;margin-bottom:16px;}
+.search-input{
+  flex:1;background:var(--glass-bg);backdrop-filter:var(--glass-blur);
+  border:1px solid var(--glass-border);color:var(--text);
+  padding:10px 16px;border-radius:10px;font-size:14px;font-family:inherit;
+  outline:none;transition:border-color .2s,box-shadow .2s;
+}
+.search-input:focus{border-color:var(--orange);box-shadow:0 0 0 3px rgba(241,89,70,.1);}
+
+/* ── PAGES ──────────────────────────────────── */
+.page{display:none;}
+.page.active{display:block;animation:fadeUp .35s ease both;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes fadeDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+
+/* ── MODAL ──────────────────────────────────── */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.75);
+  backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;
+  z-index:200;animation:fadeIn .2s ease;
+}
+.modal{
+  background:var(--card);border:1px solid var(--glass-border);
+  border-radius:24px;width:100%;max-width:560px;max-height:82vh;
+  overflow-y:auto;padding:36px;
+  box-shadow:0 40px 100px rgba(0,0,0,.6);
+  animation:popIn .3s cubic-bezier(.34,1.56,.64,1) both;
+}
+.modal-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:28px;}
+.modal-close{background:transparent;border:none;color:var(--muted);font-size:18px;cursor:pointer;transition:color .2s;padding:4px;}
+.modal-close:hover{color:var(--text);}
+.modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;}
+.modal-stat{background:rgba(255,255,255,.04);border:1px solid var(--glass-border);border-radius:12px;padding:14px 16px;}
+.modal-stat-lbl{font-size:11px;color:var(--muted);margin-bottom:6px;}
+.modal-stat-val{font-size:20px;font-weight:700;}
+.goal-box{
+  background:rgba(241,89,70,.06);border:1px solid rgba(241,89,70,.18);
+  border-right:3px solid var(--orange);border-radius:12px;
+  padding:14px 16px;font-size:13px;line-height:1.8;margin-bottom:16px;
+}
+.week-graph{
+  background:#0a0a0a;border:1px solid var(--glass-border);border-radius:12px;
+  padding:16px;font-family:'Courier New',monospace;font-size:12px;
+  color:var(--text);line-height:2.2;
+}
+
+/* LINK BOX */
+.link-box{
+  background:rgba(241,89,70,.07);border:1px solid rgba(241,89,70,.2);
+  border-radius:12px;padding:14px 18px;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;
+}
+.link-url{font-size:12px;color:var(--muted);word-break:break-all;flex:1;font-family:'Courier New',monospace;direction:ltr;}
+
+/* ── DAILY REPORT ───────────────────────────── */
+.report-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.report-col{background:var(--glass-bg);backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-radius:16px;overflow:hidden;}
+.report-col-head{padding:14px 18px;border-bottom:1px solid var(--glass-border);display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;}
+.report-col-head.done{border-right:3px solid var(--green);}
+.report-col-head.miss{border-right:3px solid var(--red);}
+.member-row{display:flex;align-items:center;gap:12px;padding:11px 18px;border-bottom:1px solid rgba(255,255,255,.03);font-size:13px;transition:background .15s;}
+.member-row:last-child{border-bottom:none;}
+.member-row:hover{background:rgba(255,255,255,.02);}
+.avatar{width:32px;height:32px;background:rgba(241,89,70,.12);border:1px solid rgba(241,89,70,.2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--orange);flex-shrink:0;}
+
+/* ── LEADERBOARD ────────────────────────────── */
+.leader-row{display:flex;align-items:center;gap:14px;padding:14px 22px;border-bottom:1px solid rgba(255,255,255,.03);transition:background .15s;}
+.leader-row:last-child{border-bottom:none;}
+.leader-row:hover{background:rgba(255,255,255,.02);}
+.leader-rank{font-size:18px;font-weight:700;width:32px;text-align:center;}
+.leader-info{flex:1;}
+.leader-name{font-size:14px;font-weight:600;}
+.leader-sub{font-size:11px;color:var(--muted);margin-top:2px;}
+.leader-rate{font-size:24px;font-weight:700;color:var(--orange);}
+
+/* ── USER SELECT CARDS ──────────────────────── */
+.user-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;}
+.user-card{
+  background:var(--glass-bg);backdrop-filter:var(--glass-blur);
+  border:1px solid var(--glass-border);border-radius:14px;
+  padding:18px;cursor:pointer;transition:all .2s;
+}
+.user-card:hover{border-color:rgba(241,89,70,.3);transform:translateY(-2px);}
+.user-card.sel{border-color:var(--orange);background:rgba(241,89,70,.08);box-shadow:0 0 20px rgba(241,89,70,.15);}
+.user-card-name{font-size:14px;font-weight:700;margin-bottom:4px;}
+.user-card-sub{font-size:12px;color:var(--muted);}
+
+/* ── LOADING & EMPTY ────────────────────────── */
+.loading{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:14px;padding:40px;justify-content:center;}
+.spinner{width:18px;height:18px;border:2px solid rgba(255,255,255,.1);border-top-color:var(--orange);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{padding:48px;text-align:center;color:var(--muted);font-size:14px;}
+
+/* TOAST */
+.toast{
+  position:fixed;bottom:28px;left:28px;
+  background:var(--card);border:1px solid var(--glass-border);
+  backdrop-filter:var(--glass-blur);border-radius:12px;
+  padding:12px 20px;font-size:13px;z-index:999;
+  transform:translateY(80px);transition:transform .35s cubic-bezier(.34,1.56,.64,1);
+}
+.toast.show{transform:none;}
+.toast.success{border-color:var(--green);color:var(--green);}
+.toast.error{border-color:var(--red);color:var(--red);}
+
+/* ── RESPONSIVE ─────────────────────────────── */
+@media(max-width:820px){
+  .sidebar{display:none;}
+  .main{margin-right:0;padding:20px 16px;}
+  .stats-grid{grid-template-columns:1fr 1fr;}
+  .report-grid{grid-template-columns:1fr;}
+  .modal-grid{grid-template-columns:1fr;}
+}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+::-webkit-scrollbar{width:5px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:rgba(241,89,70,.3);border-radius:10px;}
+</style>
+</head>
+<body>
+<div class="amb amb-1"></div>
+<div class="amb amb-2"></div>
+
+<!-- ── LOGIN ──────────────────────────────────── -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">✳️</div>
+    <h1>محـاولات</h1>
+    <p>لوحة تحكم الأدمن</p>
+    <input type="password" class="login-input" id="pwd" placeholder="كلمة المرور">
+    <button class="login-btn" onclick="doLogin()">دخـول</button>
+    <div class="login-error" id="lerr">كلمة المرور غلط ✕</div>
+  </div>
+</div>
+
+<!-- ── APP ────────────────────────────────────── -->
+<div id="app">
+  <div class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">✳️</div>
+      <div><div class="logo-name">محاولات</div><div class="logo-v">Admin v7.2</div></div>
+    </div>
+    <nav class="nav">
+      <div class="nav-lbl">عام</div>
+      <button class="nav-item active" onclick="nav('overview')" id="n-overview"><span class="nav-icon">📊</span>نظرة عامة</button>
+      <button class="nav-item" onclick="nav('members')" id="n-members"><span class="nav-icon">👥</span>الأعضاء</button>
+      <button class="nav-item" onclick="nav('leaderboard')" id="n-leaderboard"><span class="nav-icon">🏆</span>الليدربورد</button>
+      <div class="nav-lbl">تقارير</div>
+      <button class="nav-item" onclick="nav('daily')" id="n-daily"><span class="nav-icon">📝</span>التقرير اليومي</button>
+      <button class="nav-item" onclick="nav('warnings')" id="n-warnings"><span class="nav-icon">⚠️</span>الإنذارات</button>
+      <div class="nav-lbl">أدوات</div>
+      <button class="nav-item" onclick="nav('links')" id="n-links"><span class="nav-icon">🔗</span>روابط الأعضاء</button>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="status-pill">
+        <div class="status-dot"></div>
+        <div><div style="font-size:13px;font-weight:600">Admin</div><div style="font-size:11px;color:var(--muted)" id="bot-st">جاري الاتصال...</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+
+    <!-- OVERVIEW -->
+    <div class="page active" id="p-overview">
+      <div class="topbar">
+        <div><div class="page-title">نظـرة عامـة</div><div class="page-sub" id="ov-date">اليوم</div></div>
+        <button class="btn btn-g" onclick="loadOverview()">🔄 تحديث</button>
+      </div>
+      <div class="stats-grid" id="stats-grid"><div class="loading"><div class="spinner"></div></div></div>
+      <div class="section-card">
+        <div class="section-head"><div class="section-head-title">⚡ أكثر الأعضاء نشاطاً</div></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>الاسم</th><th>الستريك</th><th>التزام الأسبوع</th><th>الإنذارات</th><th>التقرير</th></tr></thead>
+            <tbody id="ov-table"><tr><td colspan="5" class="loading"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- MEMBERS -->
+    <div class="page" id="p-members">
+      <div class="topbar">
+        <div><div class="page-title">الأعـضاء</div></div>
+        <button class="btn btn-g" onclick="loadMembers()">🔄 تحديث</button>
+      </div>
+      <div class="search-bar"><input class="search-input" placeholder="🔍 ابحث بالاسم..." id="msearch" oninput="filterM()"></div>
+      <div class="section-card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>الاسم</th><th>الهدف</th><th>الستريك</th><th>الأسبوع</th><th>الإجمالي</th><th>إنذارات</th><th>اليوم</th><th></th></tr></thead>
+            <tbody id="m-table"><tr><td colspan="8" class="loading"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- LEADERBOARD -->
+    <div class="page" id="p-leaderboard">
+      <div class="topbar"><div><div class="page-title">🏆 لوحة الشـرف</div></div><button class="btn btn-g" onclick="loadLB()">🔄</button></div>
+      <div class="section-card" id="lb-list"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+
+    <!-- DAILY -->
+    <div class="page" id="p-daily">
+      <div class="topbar"><div><div class="page-title">التقـرير اليومي</div></div><button class="btn btn-g" onclick="loadDaily()">🔄</button></div>
+      <div id="d-stats" style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;"></div>
+      <div class="report-grid" id="d-grid"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+
+    <!-- WARNINGS -->
+    <div class="page" id="p-warnings">
+      <div class="topbar"><div><div class="page-title">⚠️ الإنذارات</div></div><button class="btn btn-g" onclick="loadWarns()">🔄</button></div>
+      <div class="section-card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>الاسم</th><th>الإنذارات</th><th>مراجعات الأسبوع</th><th>الحالة</th></tr></thead>
+            <tbody id="w-table"><tr><td colspan="4" class="loading"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- LINKS -->
+    <div class="page" id="p-links">
+      <div class="topbar">
+        <div><div class="page-title">🔗 روابط الأعضاء</div><div class="page-sub">رابط خاص لكل عضو يشوف بروفايله — صالح 24 ساعة</div></div>
+      </div>
+      <div class="search-bar"><input class="search-input" placeholder="🔍 ابحث بالاسم..." id="lsearch" oninput="filterL()"></div>
+      <div class="user-grid" id="lu-grid"><div class="loading"><div class="spinner"></div></div></div>
+      <div id="gen-link" style="display:none;margin-top:20px;">
+        <div class="section-card">
+          <div class="section-head"><div class="section-head-title">✅ الرابط جاهز</div></div>
+          <div style="padding:20px 22px;">
+            <div class="link-box"><div class="link-url" id="link-txt"></div><button class="btn btn-p" onclick="copyLink()">نسخ</button></div>
+            <div style="font-size:12px;color:var(--muted);margin-top:10px;">⏰ ينتهي بعد 24 ساعة من التوليد</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- MEMBER MODAL -->
+<div class="modal-overlay" id="m-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div>
+        <div style="font-size:18px;font-weight:700" id="md-name"></div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px" id="md-sub"></div>
+      </div>
+      <button class="modal-close" onclick="document.getElementById('m-modal').style.display='none'">✕</button>
+    </div>
+    <div class="goal-box" id="md-goal"></div>
+    <div class="modal-grid" id="md-stats"></div>
+    <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:10px">📈 أداء الأسبوع</div>
+    <div class="week-graph" id="md-graph"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '';
+let tok = localStorage.getItem('adm_tok') || '';
+let allM = [], allL = [];
+
+addEventListener('DOMContentLoaded', () => {
+  if (tok) tryAuto();
+  document.getElementById('pwd').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+});
+
+async function tryAuto() {
+  const r = await apiFetch('/api/admin/overview');
+  if (r.ok) { showApp(); loadOverview(); } else { tok=''; localStorage.removeItem('adm_tok'); }
+}
+
+async function doLogin() {
+  const pwd = document.getElementById('pwd').value;
+  const err = document.getElementById('lerr');
+  err.style.display='none';
+  const r = await fetch(`${API}/api/admin/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pwd})});
+  if (r.ok) { const d=await r.json(); tok=d.token; localStorage.setItem('adm_tok',tok); showApp(); loadOverview(); }
+  else { err.style.display='block'; document.getElementById('pwd').value=''; }
+}
+
+function showApp() {
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').style.display='block';
+  checkHealth();
+}
+
+async function apiFetch(url, opts={}) {
+  return fetch(`${API}${url}`,{...opts,headers:{'Content-Type':'application/json','x-admin-token':tok,...(opts.headers||{})}});
+}
+
+function nav(page) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById(`p-${page}`).classList.add('active');
+  document.getElementById(`n-${page}`).classList.add('active');
+  const map={overview:loadOverview,members:loadMembers,leaderboard:loadLB,daily:loadDaily,warnings:loadWarns,links:loadLU};
+  if(map[page]) map[page]();
+}
+
+async function checkHealth() {
+  try { const r=await fetch('/api/health'); const d=await r.json(); document.getElementById('bot-st').textContent=`${d.users} عضو | ${Math.floor(d.uptime/60)}m`; } catch{document.getElementById('bot-st').textContent='غير متصل';}
+}
+
+async function loadOverview() {
+  const [r1,r2]=await Promise.all([apiFetch('/api/admin/overview'),apiFetch('/api/admin/members')]);
+  const ov=await r1.json(); const mem=await r2.json();
+  document.getElementById('ov-date').textContent=new Date().toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  document.getElementById('stats-grid').innerHTML=`
+    <div class="stat-card g"><div class="stat-label">الأعضاء الكل</div><div class="stat-num accent">${ov.totalUsers}</div><div class="stat-sub">مسجل في النظام</div></div>
+    <div class="stat-card"><div class="stat-label">عملوا التقرير</div><div class="stat-num accent">${ov.reportedToday}</div><div class="stat-sub">من ${ov.totalUsers} عضو</div></div>
+    <div class="stat-card r"><div class="stat-label">لسه ما عملوش</div><div class="stat-num accent">${ov.missingToday}</div><div class="stat-sub">مطلوب منهم</div></div>
+    <div class="stat-card y"><div class="stat-label">التزام الأسبوع</div><div class="stat-num accent">${ov.avgRate}%</div><div class="stat-sub">آخر 7 أيام</div></div>
+    <div class="stat-card b"><div class="stat-label">متوسط الستريك</div><div class="stat-num accent">${ov.avgStreak}</div><div class="stat-sub">يوم</div></div>
+    <div class="stat-card r"><div class="stat-label">لديهم إنذارات</div><div class="stat-num accent">${ov.withWarnings}</div><div class="stat-sub">عضو</div></div>`;
+  const top=mem.sort((a,b)=>b.weeklyRate-a.weeklyRate).slice(0,10);
+  document.getElementById('ov-table').innerHTML=top.map(m=>`<tr>
+    <td><b>${m.name}</b></td>
+    <td><div class="streak-bar"><div class="bar-track"><div class="bar-fill" style="width:${Math.min(m.streak/30*100,100)}%"></div></div><span style="font-size:11px;color:var(--muted)">🔥${m.streak}</span></div></td>
+    <td><span class="badge ${m.weeklyRate>=70?'bg':m.weeklyRate>=40?'bo':'br'}">${m.weeklyRate}%</span></td>
+    <td><div class="pips">${[1,2,3].map(i=>`<div class="pip ${m.warningCount>=i?'on':''}"></div>`).join('')}</div></td>
+    <td><span class="badge ${m.reportedToday?'bg':'bm'}">${m.reportedToday?'✓ عمل':'—'}</span></td>
+  </tr>`).join('');
+}
+
+async function loadMembers() {
+  const r=await apiFetch('/api/admin/members'); allM=await r.json(); renderM(allM);
+}
+function renderM(ms) {
+  document.getElementById('m-table').innerHTML=ms.length?ms.map(m=>`<tr>
+    <td><b>${m.name}</b></td>
+    <td style="max-width:160px;color:var(--muted);font-size:12px">${(m.goal||'—').slice(0,55)}${(m.goal||'').length>55?'...':''}</td>
+    <td>🔥 ${m.streak}</td>
+    <td><span class="badge ${m.weeklyRate>=70?'bg':m.weeklyRate>=40?'bo':'br'}">${m.weeklyRate}%</span></td>
+    <td style="color:var(--muted)">${m.totalDone}</td>
+    <td><div class="pips">${[1,2,3].map(i=>`<div class="pip ${m.warningCount>=i?'on':''}"></div>`).join('')}</div></td>
+    <td><span class="badge ${m.reportedToday?'bg':'bm'}">${m.reportedToday?'✓':'—'}</span></td>
+    <td><button class="btn btn-g" style="padding:6px 12px;font-size:11px" onclick="openM('${m.userId}')">تفاصيل</button></td>
+  </tr>`).join(''):'<tr><td colspan="8" class="empty">لا يوجد أعضاء</td></tr>';
+}
+function filterM(){const q=document.getElementById('msearch').value.toLowerCase();renderM(allM.filter(m=>m.name.toLowerCase().includes(q)));}
+
+async function openM(id) {
+  document.getElementById('m-modal').style.display='flex';
+  document.getElementById('md-name').textContent='...'; document.getElementById('md-stats').innerHTML='<div class="loading"><div class="spinner"></div></div>';
+  const r=await apiFetch(`/api/admin/member/${id}`); const {user,analytics}=await r.json();
+  document.getElementById('md-name').textContent=user.name;
+  document.getElementById('md-sub').textContent=`${user.gender==='female'?'عضوة':'عضو'} · منذ ${new Date(user.created_at).toLocaleDateString('ar-EG')}`;
+  document.getElementById('md-goal').textContent=user.goal||user.bio||'لم يحدد هدف';
+  document.getElementById('md-stats').innerHTML=`
+    <div class="modal-stat"><div class="modal-stat-lbl">🔥 الستريك</div><div class="modal-stat-val">${user.days_streak||0} يوم</div></div>
+    <div class="modal-stat"><div class="modal-stat-lbl">📈 إجمالي العادات</div><div class="modal-stat-val">${user.total_done||0}</div></div>
+    <div class="modal-stat"><div class="modal-stat-lbl">⚠️ الإنذارات</div><div class="modal-stat-val" style="color:${(user.warning_count||0)>0?'var(--red)':'var(--green)'}">${user.warning_count||0} / 3</div></div>
+    <div class="modal-stat"><div class="modal-stat-lbl">📝 مراجعات الأسبوع</div><div class="modal-stat-val">${user.daily_review_count||0} / 5</div></div>`;
+  const dm={'Saturday':'SAT','Sunday':'SUN','Monday':'MON','Tuesday':'TUE','Wednesday':'WED','Thursday':'THU','Friday':'FRI'};
+  document.getElementById('md-graph').textContent=analytics.weeklyReport.length
+    ?analytics.weeklyReport.map(d=>{const dn=new Date(d.date).toLocaleDateString('en-US',{weekday:'long'});const b='█'.repeat(Math.floor(d.rate/10))+'░'.repeat(10-Math.floor(d.rate/10));return`${(dm[dn]||'DAY').padEnd(4)} ${b} ${Math.round(d.rate)}%`;}).join('\n')
+    :'لا توجد بيانات هذا الأسبوع';
+}
+
+async function loadLB() {
+  const r=await apiFetch('/api/admin/leaderboard'); const d=await r.json(); const medals=['🥇','🥈','🥉'];
+  document.getElementById('lb-list').innerHTML=d.length?d.map((l,i)=>`<div class="leader-row">
+    <div class="leader-rank">${medals[i]||i+1}</div>
+    <div class="leader-info"><div class="leader-name">${l.name}</div><div class="leader-sub">🔥 ${l.days_streak||0} يوم · ${l.total_done||0} عادة</div></div>
+    <div class="leader-rate">${Math.round(l.avg_rate||0)}%</div>
+  </div>`).join(''):'<div class="empty">لا توجد بيانات بعد</div>';
+}
+
+async function loadDaily() {
+  const r=await apiFetch('/api/admin/daily-report'); const d=await r.json();
+  const p=d.total?Math.round(d.done.length/d.total*100):0;
+  document.getElementById('d-stats').innerHTML=`
+    <div class="stat-card g" style="flex:1;min-width:120px"><div class="stat-label">عملوا ✅</div><div class="stat-num accent">${d.done.length}</div></div>
+    <div class="stat-card r" style="flex:1;min-width:120px"><div class="stat-label">ما عملوش ❌</div><div class="stat-num accent">${d.missing.length}</div></div>
+    <div class="stat-card y" style="flex:1;min-width:120px"><div class="stat-label">المشاركة</div><div class="stat-num accent">${p}%</div></div>`;
+  document.getElementById('d-grid').innerHTML=`
+    <div class="report-col">
+      <div class="report-col-head done">✅ عملوا التقرير (${d.done.length})</div>
+      ${d.done.length?d.done.map(u=>`<div class="member-row"><div class="avatar">${u.name[0]}</div>${u.name}</div>`).join(''):'<div class="empty" style="padding:20px">لا أحد بعد</div>'}
+    </div>
+    <div class="report-col">
+      <div class="report-col-head miss">❌ لسه ما عملوش (${d.missing.length})</div>
+      ${d.missing.length?d.missing.map(u=>`<div class="member-row"><div class="avatar" style="color:var(--red);border-color:rgba(240,71,71,.2);background:rgba(240,71,71,.08)">${u.name[0]}</div>${u.name}</div>`).join(''):'<div class="empty" style="padding:20px">الجميع شارك 🎉</div>'}
+    </div>`;
+}
+
+async function loadWarns() {
+  const r=await apiFetch('/api/admin/warnings'); const d=await r.json();
+  document.getElementById('w-table').innerHTML=d.length?d.sort((a,b)=>b.warningCount-a.warningCount).map(u=>`<tr>
+    <td><b>${u.name}</b></td>
+    <td><div class="pips">${[1,2,3].map(i=>`<div class="pip ${u.warningCount>=i?'on':''}"></div>`).join('')}<span style="font-size:11px;color:var(--muted);margin-right:6px">${u.warningCount}/3</span></div></td>
+    <td>${u.reviewCount||0} / 5</td>
+    <td><span class="badge ${u.warningCount>=3?'br':u.warningCount>=2?'bo':'by'}">${u.warningCount>=3?'خطر':'تحذير'}</span></td>
+  </tr>`).join(''):'<tr><td colspan="4" class="empty">🎉 لا يوجد إنذارات حالياً</td></tr>';
+}
+
+async function loadLU() {
+  const r=await apiFetch('/api/admin/members'); allL=await r.json(); renderL(allL);
+}
+function renderL(us) {
+  document.getElementById('lu-grid').innerHTML=us.map(u=>`<div class="user-card" onclick="genLink('${u.userId}',this)">
+    <div class="user-card-name">${u.name}</div>
+    <div class="user-card-sub">🔥 ${u.streak} · ${u.weeklyRate}% التزام</div>
+  </div>`).join('');
+}
+function filterL(){const q=document.getElementById('lsearch').value.toLowerCase();renderL(allL.filter(u=>u.name.toLowerCase().includes(q)));}
+
+async function genLink(id,card) {
+  document.querySelectorAll('.user-card').forEach(c=>c.classList.remove('sel')); card.classList.add('sel');
+  document.getElementById('link-txt').textContent='جاري التوليد...'; document.getElementById('gen-link').style.display='block';
+  const r=await apiFetch('/api/admin/generate-member-link',{method:'POST',body:JSON.stringify({userId:id})});
+  const d=await r.json(); document.getElementById('link-txt').textContent=d.url;
+}
+function copyLink(){navigator.clipboard.writeText(document.getElementById('link-txt').textContent).then(()=>toast('✅ تم نسخ الرابط','success'));}
+
+function toast(msg,type='success'){const t=document.getElementById('toast');t.textContent=msg;t.className=`toast ${type} show`;setTimeout(()=>t.classList.remove('show'),3000);}
+</script>
+</body>
+</html>
