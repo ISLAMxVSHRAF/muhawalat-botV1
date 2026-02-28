@@ -191,18 +191,43 @@ class AutomationSystem {
     }
 
     async lockDailyPost() {
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        const isoDate = yesterday.toISOString().split('T')[0];
+        try {
+            // 1. Get precise Cairo time for yesterday
+            const TZ = process.env.TIMEZONE || 'Africa/Cairo';
+            const cairoTimeStr = new Date().toLocaleString("en-US", { timeZone: TZ });
+            const yesterday = new Date(cairoTimeStr);
+            yesterday.setDate(yesterday.getDate() - 1);
 
-        const postData = this.db.getDailyPost(isoDate);
-        if (!postData?.thread_id) return;
+            const yyyy = yesterday.getFullYear();
+            const mm = String(yesterday.getMonth() + 1).padStart(2, '0');
+            const dd = String(yesterday.getDate()).padStart(2, '0');
+            const isoDate = `${yyyy}-${mm}-${dd}`;
 
-        const thread = await this.client.channels.fetch(postData.thread_id).catch(() => null);
-        if (!thread) return;
+            console.log(`🔒 Attempting to lock daily post for: ${isoDate}`);
 
-        await thread.setLocked(true).catch(console.error);
-        console.log(`🔒 Daily post locked: ${isoDate}`);
+            // 2. Fetch from DB
+            const postData = this.db.getDailyPost(isoDate);
+            if (!postData || !postData.thread_id) {
+                console.log(`❌ Lock skipped: No thread_id found in database for ${isoDate}. (Was the post created manually or during a restart?)`);
+                return;
+            }
+
+            // 3. Fetch thread from Discord
+            const thread = await this.client.channels.fetch(postData.thread_id).catch(() => null);
+            if (!thread) {
+                console.log(`❌ Lock skipped: Thread ${postData.thread_id} not found on Discord.`);
+                return;
+            }
+
+            // 4. Safely Lock and Archive
+            await thread.edit({ locked: true, archived: true }, 'Daily post auto-lock').catch(e => {
+                console.error(`❌ Discord API Error while locking thread:`, e.message);
+            });
+
+            console.log(`✅ Daily post locked successfully: ${isoDate}`);
+        } catch (error) {
+            console.error(`❌ lockDailyPost critical error:`, error.message);
+        }
     }
 
     async lockTasksCron() {
