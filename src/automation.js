@@ -393,6 +393,31 @@ class AutomationSystem {
             for (const user of allUsers) {
                 const count = this.db.getReportCountInRange(user.user_id, startStr, endStr);
                 if (count < 5) {
+                    // قبل إصدار إنذار، تحقق من وجود إجازة يدوية لتقارير هذا الأسبوع أو رصيد إجازات للتقارير
+                    const hasManual = this.db.hasManualFreezeForDate(user.user_id, 'reports', endStr);
+                    if (hasManual) continue;
+
+                    let protectedByFreeze = false;
+                    try {
+                        const balance = user.freeze_reports ?? 0;
+                        if (balance > 0 && this.db.useFreeze(user.user_id, 'reports', false)) {
+                            protectedByFreeze = true;
+                        }
+                    } catch (e) {
+                        console.error('❌ auto reports freeze:', e.message);
+                    }
+
+                    if (protectedByFreeze) {
+                        // تم استخدام إجازة تلقائياً بدلاً من إصدار إنذار
+                        try {
+                            const thread = await this.client.channels.fetch(user.thread_id).catch(() => null);
+                            if (thread) {
+                                await thread.send(`⚠️ تم السحب التلقائي من رصيد إجازاتك لإنقاذ الستريك الخاص بك!`).catch(() => {});
+                            }
+                        } catch (_) {}
+                        continue;
+                    }
+
                     await issueWarning(
                         user.user_id,
                         `لم يكمل 5 من 7 تقارير أسبوعية (عمل ${count}/7)`,

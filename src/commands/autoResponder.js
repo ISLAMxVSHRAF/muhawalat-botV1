@@ -3,7 +3,7 @@
 // + handleAutoResponse للرسائل العادية (يستدعيه index)
 // ==========================================
 
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
 const CONFIG = require('../config');
 
 const ERR = CONFIG.ADMIN?.unifiedErrorMessage || '❌ حدث خطأ داخلي، تمت كتابة التفاصيل في السجل.';
@@ -46,8 +46,6 @@ const autorespondAddData = new SlashCommandBuilder()
     .setName('autorespond_add')
     .setDescription('إضافة رد تلقائي')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addStringOption(o => o.setName('trigger').setDescription('الكلمة أو الجملة المحفزة').setRequired(true))
-    .addStringOption(o => o.setName('response').setDescription('نص الرد').setRequired(true))
     .addStringOption(o => o.setName('channels').setDescription('معرفات القنوات مفصولة بفاصلة (أو اترك للكل)'))
     .addStringOption(o => o.setName('match').setDescription('نوع المطابقة')
         .addChoices(
@@ -58,19 +56,54 @@ const autorespondAddData = new SlashCommandBuilder()
 
 async function autorespondAddExecute(interaction, { db }) {
     try {
-        await interaction.deferReply({ ephemeral: true });
-        const trigger = interaction.options.getString('trigger').trim().toLowerCase();
-        const response = interaction.options.getString('response').trim();
         const chStr = interaction.options.getString('channels')?.trim();
         const scope = chStr ? chStr.replace(/\s/g, '') : 'all';
         const matchType = interaction.options.getString('match') || 'contains';
-        const ok = db.addAutoResponse(trigger, response, scope, matchType);
+
+        const modal = new ModalBuilder()
+            .setCustomId(`modal_autorespond_add_${encodeURIComponent(scope)}_${matchType}`)
+            .setTitle('إضافة رد تلقائي');
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('trigger')
+                    .setLabel('الكلمة أو الجملة المحفزة')
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true)
+            ),
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('response')
+                    .setLabel('نص الرد')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setRequired(true)
+            )
+        );
+        await interaction.showModal(modal);
+    } catch (e) {
+        console.error('❌ autorespond_add (show modal):', e);
+        await interaction.reply({ content: ERR, ephemeral: true }).catch(() => {});
+    }
+}
+
+async function processAutorespondAddModal(interaction, { db }) {
+    try {
+        await interaction.deferReply({ ephemeral: true });
+        const parts = interaction.customId.split('_');
+        // modal_autorespond_add_scope_match
+        const scope = decodeURIComponent(parts[3]);
+        const matchType = parts[4];
+
+        const trigger = interaction.fields.getTextInputValue('trigger').trim().toLowerCase();
+        const response = interaction.fields.getTextInputValue('response').trim();
+        const ok = db.addAutoResponse(trigger, response, scope || 'all', matchType || 'contains');
         invalidateCache();
         if (!ok) return interaction.editReply('❌ حدث خطأ أثناء حفظ الرد.');
-        const matchAr = matchType === 'exact' ? 'تطابق تام' : matchType === 'startswith' ? 'يبدأ بـ' : 'يحتوي على';
+        const mt = matchType || 'contains';
+        const matchAr = mt === 'exact' ? 'تطابق تام' : mt === 'startswith' ? 'يبدأ بـ' : 'يحتوي على';
         await interaction.editReply(`✅ **تم إضافة رد تلقائي**\n🔍 "${trigger}" (${matchAr})\n💬 ${response.slice(0, 60)}${response.length > 60 ? '...' : ''}\n📢 ${scope === 'all' ? 'كل القنوات' : scope}`);
     } catch (e) {
-        console.error('❌ autorespond_add:', e);
+        console.error('❌ processAutorespondAddModal:', e);
         await interaction.editReply(ERR).catch(() => {});
     }
 }
@@ -148,4 +181,4 @@ const commands = [
     { data: autorespondDeleteData, execute: autorespondDeleteExecute }
 ];
 
-module.exports = { commands, handleAutoResponse };
+module.exports = { commands, handleAutoResponse, processAutorespondAddModal };

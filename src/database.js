@@ -82,6 +82,8 @@ class MuhawalatDatabase {
             last_warning_date TEXT,
             daily_review_count INTEGER DEFAULT 0,
             streak_freeze INTEGER DEFAULT 1,
+            freeze_habits INTEGER DEFAULT 2,
+            freeze_reports INTEGER DEFAULT 2,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )`);
 
@@ -325,6 +327,8 @@ class MuhawalatDatabase {
             `ALTER TABLE users ADD COLUMN daily_review_count INTEGER DEFAULT 0`,
             `ALTER TABLE users ADD COLUMN goal TEXT`,
             `ALTER TABLE users ADD COLUMN streak_freeze INTEGER DEFAULT 1`,
+            `ALTER TABLE users ADD COLUMN freeze_habits INTEGER DEFAULT 2`,
+            `ALTER TABLE users ADD COLUMN freeze_reports INTEGER DEFAULT 2`,
             `ALTER TABLE daily_reports ADD COLUMN content TEXT`,
             `ALTER TABLE daily_reports ADD COLUMN word_count INTEGER`,
             `ALTER TABLE users ADD COLUMN goals_migrated INTEGER DEFAULT 0`,
@@ -366,6 +370,17 @@ class MuhawalatDatabase {
             this.db.run(`CREATE TABLE IF NOT EXISTS journals (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT DEFAULT (datetime('now')))`);
             this.db.run(`CREATE TABLE IF NOT EXISTS custom_months (id INTEGER PRIMARY KEY AUTOINCREMENT, start_date TEXT NOT NULL, duration_days INTEGER NOT NULL DEFAULT 30, is_active INTEGER DEFAULT 1)`);
         } catch (e) { if (!e.message.includes('already exists')) console.warn('⚠️ Migration journals/custom_months:', e.message); }
+
+        try {
+            this.db.run(`CREATE TABLE IF NOT EXISTS freezes_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id   TEXT NOT NULL,
+                date      TEXT NOT NULL,
+                type      TEXT NOT NULL, -- 'habits' | 'reports'
+                is_manual INTEGER DEFAULT 0,
+                UNIQUE(user_id, date, type)
+            )`);
+        } catch (e) { if (!e.message.includes('already exists')) console.warn('⚠️ Migration freezes_log:', e.message); }
 
         [ 'goals', 'weekly_reports', 'monthly_reports', 'yearly_reports', 'challenges', 'challenge_participants', 'challenge_daily_logs', 'tasks', 'task_completions', 'daily_posts' ].forEach(t => {
             try {
@@ -461,7 +476,8 @@ class MuhawalatDatabase {
     getUser(userId) {
         const s = this.db.prepare(`
             SELECT u.user_id, u.name, u.bio, u.goal, u.gender, u.thread_id, u.daily_msg,
-                   u.warning_count, u.last_warning_date, u.daily_review_count, u.streak_freeze, u.created_at,
+                   u.warning_count, u.last_warning_date, u.daily_review_count, u.streak_freeze,
+                   u.freeze_habits, u.freeze_reports, u.created_at,
                    s.total_done, s.days_streak, s.achieved_today, s.last_active
             FROM users u
             LEFT JOIN stats s ON u.user_id = s.user_id
@@ -476,7 +492,8 @@ class MuhawalatDatabase {
     getUserByThread(threadId) {
         const s = this.db.prepare(`
             SELECT u.user_id, u.name, u.bio, u.goal, u.gender, u.thread_id, u.daily_msg,
-                   u.warning_count, u.last_warning_date, u.daily_review_count, u.streak_freeze, u.created_at,
+                   u.warning_count, u.last_warning_date, u.daily_review_count, u.streak_freeze,
+                   u.freeze_habits, u.freeze_reports, u.created_at,
                    s.total_done, s.days_streak, s.achieved_today, s.last_active
             FROM users u
             LEFT JOIN stats s ON u.user_id = s.user_id
@@ -488,7 +505,7 @@ class MuhawalatDatabase {
     }
 
     updateUser(userId, fields) {
-        const allowed = ['name','bio','goal','gender','thread_id','warning_count','last_warning_date','daily_review_count','daily_msg','streak_freeze'];
+        const allowed = ['name','bio','goal','gender','thread_id','warning_count','last_warning_date','daily_review_count','daily_msg','streak_freeze','freeze_habits','freeze_reports'];
         const sets = [], vals = [];
         for (const [k, v] of Object.entries(fields)) {
             if (allowed.includes(k)) { sets.push(`${k} = ?`); vals.push(v); }
@@ -502,7 +519,7 @@ class MuhawalatDatabase {
     getAllUsers() {
         const s = this.db.prepare(`
             SELECT u.user_id, u.name, u.bio, u.goal, u.gender, u.thread_id,
-                   u.warning_count, u.daily_review_count, u.streak_freeze,
+                   u.warning_count, u.daily_review_count, u.streak_freeze, u.freeze_habits, u.freeze_reports,
                    s.total_done, s.days_streak, s.achieved_today
             FROM users u LEFT JOIN stats s ON u.user_id = s.user_id
         `);
@@ -1440,6 +1457,49 @@ class MuhawalatDatabase {
         return r;
     }
 
+    // ==========================================
+    // FREEZE (إجازات) — رصيد عطلية الستريك والتقارير
+    // ==========================================
+    useFreeze(userId, type, isManual = false) {
+        try {
+            const col = type === 'reports' ? 'freeze_reports' : 'freeze_habits';
+            const s = this.db.prepare(`SELECT ${col} as balance FROM users WHERE user_id = ?`);
+            s.bind([userId]);
+            const row = s.step() ? s.getAsObject() : { balance: 0 };
+            s.free();
+            const balance = row.balance ?? 0;
+            if (balance <= 0) return false;
+
+            this.db.run(`UPDATE users SET ${col} = MAX(0, ${col} - 1) WHERE user_id = ?`, [userId]);
+
+            const today = new Date().toISOString().split('T')[0];
+            this.db.run(
+                `INSERT OR REPLACE INTO freezes_log (user_id, date, type, is_manual) VALUES (?,?,?,?)`,
+                [userId, today, type, isManual ? 1 : 0]
+            );
+            this.save();
+            return true;
+        } catch (e) {
+            console.error('❌ useFreeze:', e.message);
+            return false;
+        }
+    }
+
+    hasManualFreezeForDate(userId, type, date) {
+        try {
+            const s = this.db.prepare(
+                `SELECT 1 FROM freezes_log WHERE user_id = ? AND type = ? AND date = ? AND is_manual = 1 LIMIT 1`
+            );
+            s.bind([userId, type, date]);
+            const has = s.step();
+            s.free();
+            return !!has;
+        } catch (e) {
+            console.error('❌ hasManualFreezeForDate:', e.message);
+            return false;
+        }
+    }
+
     incrementDailyReview(userId) {
         this.db.run(`UPDATE users SET daily_review_count=daily_review_count+1 WHERE user_id=?`, [userId]);
         this.save();
@@ -1874,16 +1934,41 @@ class MuhawalatDatabase {
                         console.log(`✅ Auto-removed warning for ${u.name} (${newStreak} day streak)`);
                     }
                 } else {
-                    // ✅ استخدام Streak Freeze إن وجد بدلاً من كسر الستريك مباشرة
-                    const currentFreeze = u.streak_freeze || 0;
-                    if (currentFreeze > 0) {
-                        this.db.run(
-                            `UPDATE users SET streak_freeze = streak_freeze - 1 WHERE user_id = ?`,
-                            [u.user_id]
-                        );
+                    // أولاً: تحقق من وجود إجازة يدوية (Freeze) لليوم على مستوى العادات
+                    let protectedByFreeze = false;
+                    if (this.hasManualFreezeForDate(u.user_id, 'habits', today)) {
+                        protectedByFreeze = true;
+                    } else {
+                        // ثانياً: استخدام إجازة تلقائية من رصيد freeze_habits إن وجد
+                        try {
+                            const s2 = this.db.prepare('SELECT freeze_habits as balance FROM users WHERE user_id = ?');
+                            s2.bind([u.user_id]);
+                            const row2 = s2.step() ? s2.getAsObject() : { balance: 0 };
+                            s2.free();
+                            const balance = row2.balance ?? 0;
+                            if (balance > 0 && this.useFreeze(u.user_id, 'habits', false)) {
+                                protectedByFreeze = true;
+                            }
+                        } catch (e) {
+                            console.error('❌ auto habits freeze:', e.message);
+                        }
+                    }
+
+                    if (protectedByFreeze) {
+                        // تم إنقاذ الستريك بواسطة الإجازة (اليدوية أو التلقائية)
                         frozenUsers.push(u);
                     } else {
-                        this.db.run('UPDATE stats SET days_streak=0 WHERE user_id=?', [u.user_id]);
+                        // ✅ استخدام Streak Freeze القديم إن وجد بدلاً من كسر الستريك مباشرة
+                        const currentFreeze = u.streak_freeze || 0;
+                        if (currentFreeze > 0) {
+                            this.db.run(
+                                `UPDATE users SET streak_freeze = streak_freeze - 1 WHERE user_id = ?`,
+                                [u.user_id]
+                            );
+                            frozenUsers.push(u);
+                        } else {
+                            this.db.run('UPDATE stats SET days_streak=0 WHERE user_id=?', [u.user_id]);
+                        }
                     }
                 }
             }

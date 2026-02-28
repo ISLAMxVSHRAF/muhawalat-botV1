@@ -130,10 +130,18 @@ async function buildHomeSection(userId, db, guildId = null) {
     content += `Annual  : ${yearlyGoals.length  ? yearlyGoals.join(' | ')  : '—'}\n`;
     content += `Monthly : ${monthlyGoals.length ? monthlyGoals.join(' | ') : '—'}\n`;
     content += `Weekly  : ${weeklyGoals.length  ? weeklyGoals.join(' | ')  : '—'}\n\n`;
+    const maxHabitsFreeze = 2;
+    const maxReportsFreeze = 2;
+    const habitsFreeze = typeof user.freeze_habits === 'number' ? user.freeze_habits : maxHabitsFreeze;
+    const reportsFreeze = typeof user.freeze_reports === 'number' ? user.freeze_reports : maxReportsFreeze;
+
     content += `📋 COMMUNITY TASKS\n`;
     content += `Daily   : ${dailyStatus} [${dailyCount}/7]\n`;
     content += `Weekly  : ${weeklyStatus} [${weeklyCount}/${weeklyTotal}]\n`;
     content += `Monthly : ${monthlyStatus} [${monthlyCount}/${monthlyTotal}]\n\n`;
+    content += `❄️ FREEZES (إجازات)\n`;
+    content += `Habits  : [${habitsFreeze}/${maxHabitsFreeze}]\n`;
+    content += `Reports : [${reportsFreeze}/${maxReportsFreeze}]\n\n`;
     content += `📈 HABITS — ${completed}/${total}\n`;
     content += makeBar(percent, 15) + '\n';
     content += '━━━━━━━━━━━━━━━━━━━━━━━━\n';
@@ -336,7 +344,8 @@ function buildControlRow(section) {
             new ButtonBuilder().setCustomId('btn_add').setLabel('إضافة عادة').setStyle(ButtonStyle.Primary).setEmoji('➕'),
             new ButtonBuilder().setCustomId('btn_refresh').setLabel('تحديث').setStyle(ButtonStyle.Secondary).setEmoji('🔄'),
             new ButtonBuilder().setCustomId('btn_edit_profile').setLabel('تعديل الملف').setStyle(ButtonStyle.Secondary).setEmoji('✏️'),
-            new ButtonBuilder().setCustomId('btn_delete_mode').setLabel('حذف عادة').setStyle(ButtonStyle.Danger).setEmoji('🗑️')
+            new ButtonBuilder().setCustomId('btn_delete_mode').setLabel('حذف عادة').setStyle(ButtonStyle.Danger).setEmoji('🗑️'),
+            new ButtonBuilder().setCustomId('btn_freeze').setLabel('طلب إجازة ❄️').setStyle(ButtonStyle.Secondary)
         );
     } else if (section === 'goals') {
         btns.push(
@@ -366,13 +375,12 @@ function buildMenuRow() {
             .setCustomId('dashboard_menu')
             .setPlaceholder('📋 القائمة...')
             .addOptions([
-                { label: '🏠 الرئيسية',    value: 'section_home',       emoji: '🏠' },
-                { label: '📊 إحصائياتي',   value: 'section_stats',      emoji: '📊' },
-                { label: '🏆 تحدياتي',     value: 'section_challenges', emoji: '🏆' },
-                { label: '🎯 أهدافي',      value: 'section_goals',      emoji: '🎯' },
-                { label: '📅 مراجعة يوم',  value: 'review_history',     emoji: '📅' },
-                { label: '👤 بطاقتي',      value: 'my_card',            emoji: '👤' },
-                { label: 'ℹ️ عن البوت',    value: 'about',              emoji: 'ℹ️' }
+                { label: '🏠 الرئيسية',              value: 'section_home',       emoji: '🏠' },
+                { label: '📊 بطاقتي والإحصائيات',   value: 'section_stats',      emoji: '📊' },
+                { label: '🏆 تحدياتي',               value: 'section_challenges', emoji: '🏆' },
+                { label: '🎯 أهدافي',                value: 'section_goals',      emoji: '🎯' },
+                { label: '📅 مراجعة يوم',            value: 'review_history',     emoji: '📅' },
+                { label: 'ℹ️ عن البوت',              value: 'about',              emoji: 'ℹ️' }
             ])
     );
 }

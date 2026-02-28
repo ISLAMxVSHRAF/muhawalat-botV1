@@ -30,6 +30,8 @@ const { processTaskCreateModal } = require('./src/commands/tasks');
 const { processChallengeCreateModal } = require('./src/commands/challenges');
 const { processSyncTasksModal } = require('./src/commands/sync_tasks');
 const { processSyncChallengeModal } = require('./src/commands/sync_challenge');
+const { processScheduleAddModal } = require('./src/commands/scheduler');
+const { processAutorespondAddModal } = require('./src/commands/autoResponder');
 
 // ==========================================
 // CLIENT
@@ -329,6 +331,31 @@ client.on('interactionCreate', async interaction => {
                 return interaction.update({ content: '✅ تم التجاهل', components: [] });
             }
             if (id === 'btn_achievements') return showAchievements(interaction, db);
+            if (id === 'btn_freeze') {
+                const threadOwner = db.getUserByThread(interaction.channel.id);
+                if (threadOwner && threadOwner.user_id !== interaction.user.id) {
+                    return interaction.reply({ content: '😤 بطل لعب يا نجم! دي مش مساحتك.', ephemeral: true });
+                }
+                const user = db.getUser(interaction.user.id);
+                if (!user) {
+                    return interaction.reply({ content: '❌ لازم تسجّل الأول قبل طلب الإجازة.', ephemeral: true });
+                }
+                const { ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
+                const options = [];
+                options.push({ label: 'إجازة عادات (Habits)', value: 'habits', emoji: '📋' });
+                options.push({ label: 'إجازة تقرير يومي (Reports)', value: 'reports', emoji: '📝' });
+                const row = new ActionRowBuilder().addComponents(
+                    new StringSelectMenuBuilder()
+                        .setCustomId('freeze_select')
+                        .setPlaceholder('اختر نوع الإجازة لليوم')
+                        .addOptions(options)
+                );
+                return interaction.reply({
+                    content: '❄️ **إجازة اليوم:**\nاختر نوع الإجازة اللي حابب تستخدمها لليوم فقط.',
+                    components: [row],
+                    ephemeral: true
+                });
+            }
             if (id === 'btn_journal') {
                 const threadOwner = db.getUserByThread(interaction.channel.id);
                 if (threadOwner && threadOwner.user_id !== interaction.user.id) {
@@ -385,6 +412,27 @@ client.on('interactionCreate', async interaction => {
         }
         else if (interaction.isStringSelectMenu()) {
             if (interaction.customId === 'del_menu') return processDeleteHabit(interaction, db);
+            if (interaction.customId === 'freeze_select') {
+                const type = interaction.values[0] === 'reports' ? 'reports' : 'habits';
+                const user = db.getUser(interaction.user.id);
+                if (!user) {
+                    return interaction.reply({ content: '❌ لازم تسجّل الأول قبل طلب الإجازة.', ephemeral: true });
+                }
+                const today = new Date().toISOString().split('T')[0];
+                if (db.hasManualFreezeForDate(interaction.user.id, type, today)) {
+                    return interaction.reply({ content: '⚠️ استخدمت إجازة لهذا النوع اليوم بالفعل.', ephemeral: true });
+                }
+                const col = type === 'reports' ? 'freeze_reports' : 'freeze_habits';
+                const balance = user[col] ?? 0;
+                if (balance <= 0) {
+                    return interaction.reply({ content: '❌ لا يوجد رصيد إجازات متاح لهذا النوع.', ephemeral: true });
+                }
+                const ok = db.useFreeze(interaction.user.id, type, true);
+                if (!ok) {
+                    return interaction.reply({ content: '❌ تعذر تفعيل الإجازة، حاول لاحقاً.', ephemeral: true });
+                }
+                return interaction.reply({ content: '✅ تم تفعيل الإجازة لليوم. لن تتأثر سلسلة التزامك!', ephemeral: true });
+            }
             if (interaction.customId === 'dashboard_menu') {
                 const choice = interaction.values[0];
                 if (choice === 'review_history') {
@@ -461,6 +509,8 @@ client.on('interactionCreate', async interaction => {
             if (id === 'modal_sync_tasks') return processSyncTasksModal(interaction, db, client);
             if (id === 'modal_sync_challenge') return processSyncChallengeModal(interaction, db, client);
             if (id === 'modal_journal') return processJournalModal(interaction, db);
+            if (id.startsWith('modal_schedule_add_')) return processScheduleAddModal(interaction, { automation });
+            if (id.startsWith('modal_autorespond_add_')) return processAutorespondAddModal(interaction, { db });
         }
     } catch (error) {
         console.error('❌ Interaction Error:', error);

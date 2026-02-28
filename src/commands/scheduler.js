@@ -1,9 +1,9 @@
 // ==========================================
 // 📅 SCHEDULER — Slash Commands
-// جدولة الرسائل (خيارات صريحة لـ schedule_add)
+// /schedule_add الآن يستخدم Modal لسهولة الكتابة
 // ==========================================
 
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
 const CONFIG = require('../config');
 
 const ERR = CONFIG.ADMIN?.unifiedErrorMessage || '❌ حدث خطأ داخلي، تمت كتابة التفاصيل في السجل.';
@@ -13,41 +13,97 @@ const scheduleAddData = new SlashCommandBuilder()
     .setDescription('إضافة رسالة مجدولة')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addChannelOption(o => o.setName('channel').setDescription('القناة').setRequired(true))
-    .addStringOption(o => o.setName('time').setDescription('الوقت بصيغة HH:MM مثل 20:00').setRequired(true))
-    .addStringOption(o => o.setName('content').setDescription('نص الرسالة').setRequired(true))
-    .addStringOption(o => o.setName('title').setDescription('عنوان (اختياري)'))
     .addStringOption(o => o.setName('repeat').setDescription('التكرار')
         .addChoices(
             { name: 'يومي', value: 'daily' },
             { name: 'أسبوعي', value: 'weekly' },
             { name: 'مرة واحدة', value: 'once' }
-        ))
-    .addStringOption(o => o.setName('media').setDescription('رابط صورة/ميديا (اختياري)'));
+        ).setRequired(true));
 
 async function scheduleAddExecute(interaction, { db, client, automation }) {
     try {
-        await interaction.deferReply({ ephemeral: true });
         const channel = interaction.options.getChannel('channel');
-        const timeStr = interaction.options.getString('time').trim();
+        const repeat = interaction.options.getString('repeat');
+        const modal = new ModalBuilder()
+            .setCustomId(`modal_schedule_add_${channel.id}_${repeat}`)
+            .setTitle('إضافة رسالة مجدولة');
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('time')
+                    .setLabel('الوقت (HH:MM)')
+                    .setStyle(TextInputStyle.Short)
+                    .setPlaceholder('مثال: 20:00')
+                    .setRequired(true)
+            ),
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('title')
+                    .setLabel('العنوان (اختياري)')
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(false)
+            ),
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('content')
+                    .setLabel('نص الرسالة')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setRequired(true)
+            ),
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('media')
+                    .setLabel('رابط صورة/ميديا (اختياري)')
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(false)
+            )
+        );
+        await interaction.showModal(modal);
+    } catch (e) {
+        console.error('❌ schedule_add (show modal):', e);
+        await interaction.reply({ content: ERR, ephemeral: true }).catch(() => {});
+    }
+}
+
+async function processScheduleAddModal(interaction, { automation }) {
+    try {
+        await interaction.deferReply({ ephemeral: true });
+        const parts = interaction.customId.split('_');
+        // modal_schedule_add_channelId_repeat
+        const channelId = parts[3];
+        const repeat = parts[4];
+
+        const timeStr = interaction.fields.getTextInputValue('time').trim();
         const match = timeStr.match(/^(\d{1,2}):(\d{2})$/);
         if (!match) return interaction.editReply('❌ تنسيق الوقت غير صحيح. استخدم **HH:MM** مثل 20:00 أو 8:30');
         const hour = parseInt(match[1], 10);
         const min = parseInt(match[2], 10);
-        if (hour < 0 || hour > 23 || min < 0 || min > 59) return interaction.editReply('❌ وقت غير صالح. الساعة 0–23 والدقائق 0–59.');
-        const content = interaction.options.getString('content').trim();
-        const title = interaction.options.getString('title')?.trim() || '';
-        const repeat = interaction.options.getString('repeat') || 'once';
-        const mediaUrl = interaction.options.getString('media')?.trim() || null;
-        const channelId = channel.id;
-        let cronExpr = repeat === 'daily' ? `${min} ${hour} * * *` : repeat === 'weekly' ? `${min} ${hour} * * 0` : `${min} ${hour} * * *`;
+        if (hour < 0 || hour > 23 || min < 0 || min > 59) {
+            return interaction.editReply('❌ وقت غير صالح. الساعة 0–23 والدقائق 0–59.');
+        }
+
+        const title = (interaction.fields.getTextInputValue('title') || '').trim();
+        const content = (interaction.fields.getTextInputValue('content') || '').trim();
+        const mediaUrlRaw = (interaction.fields.getTextInputValue('media') || '').trim();
+        const mediaUrl = mediaUrlRaw || null;
+
+        let cronExpr;
+        if (repeat === 'daily') cronExpr = `${min} ${hour} * * *`;
+        else if (repeat === 'weekly') cronExpr = `${min} ${hour} * * 0`;
+        else cronExpr = `${min} ${hour} * * *`;
+
         const id = automation.addAndSchedule({
-            title, content, mediaUrl,
-            channelId, cronExpr,
+            title,
+            content,
+            mediaUrl,
+            channelId,
+            cronExpr,
             repeatType: repeat,
             notifyBefore: false,
             createdBy: interaction.user.id
         });
         if (!id) return interaction.editReply('❌ حدث خطأ أثناء حفظ الجدولة.');
+
         const timeDisp = `${hour.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`;
         const repeatAr = repeat === 'daily' ? 'يومياً' : repeat === 'weekly' ? 'أسبوعياً' : 'مرة واحدة';
         await interaction.editReply(
@@ -55,7 +111,7 @@ async function scheduleAddExecute(interaction, { db, client, automation }) {
             (title ? `📌 ${title}\n` : '') + (mediaUrl ? '🖼️ ميديا\n' : '') + `\n📝 ${content.slice(0, 80)}${content.length > 80 ? '...' : ''}`
         );
     } catch (e) {
-        console.error('❌ schedule_add:', e);
+        console.error('❌ processScheduleAddModal:', e);
         await interaction.editReply(ERR).catch(() => {});
     }
 }
@@ -153,4 +209,4 @@ const commands = [
     { data: scheduleDeleteData, execute: scheduleDeleteExecute }
 ];
 
-module.exports = { commands };
+module.exports = { commands, processScheduleAddModal };
