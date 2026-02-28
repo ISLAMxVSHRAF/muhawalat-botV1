@@ -208,12 +208,33 @@ async function warningsAllExecute(interaction, { db }) {
     }
 }
 
+const warningsAutoToggleData = new SlashCommandBuilder()
+    .setName('warnings_auto_toggle')
+    .setDescription('إيقاف/تشغيل نظام الإنذارات التلقائية')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
+
+async function warningsAutoToggleExecute(interaction, { db }) {
+    try {
+        await interaction.deferReply({ ephemeral: true });
+        const enabled = db.toggleAutoWarnings();
+        if (enabled) {
+            await interaction.editReply('✅ **تم تفعيل** نظام الإنذارات التلقائية. البوت سيقوم بفحص وتقييم الأعضاء أسبوعياً.');
+        } else {
+            await interaction.editReply('⏸️ **تم إيقاف** نظام الإنذارات التلقائية مؤقتاً.');
+        }
+    } catch (e) {
+        console.error('❌ warnings_auto_toggle:', e);
+        await interaction.editReply(ERR).catch(() => {});
+    }
+}
+
 const commands = [
     { data: warnData, execute: warnExecute },
     { data: removeWarnData, execute: removeWarnExecute },
     { data: clearWarnsData, execute: clearWarnsExecute },
     { data: warningsData, execute: warningsExecute },
-    { data: warningsAllData, execute: warningsAllExecute }
+    { data: warningsAllData, execute: warningsAllExecute },
+    { data: warningsAutoToggleData, execute: warningsAutoToggleExecute }
 ];
 
 module.exports = { commands, issueWarning };

@@ -39,8 +39,8 @@ class AutomationSystem {
         this.jobs.push(cron.schedule(CONFIG.SCHEDULES.weekly,   () => this.weeklyLeaderboard(), { timezone: TZ }));
 
         this.jobs.push(cron.schedule('0 9 1 * *',  () => this.monthlyGoalReminder(), { timezone: TZ }));
-        // تحذيرات التقارير الأسبوعية مرتبطة بأسابيع الـ Season — تُفحَص يومياً
-        this.jobs.push(cron.schedule('0 9 * * *',  () => this.weeklyWarningCheck(),  { timezone: TZ }));
+        // تحذيرات التقارير الأسبوعية مرتبطة بأسابيع الـ Season — تُفحَص يومياً بعد انتهاء كل أسبوع (اليوم التالي) الساعة 14:00
+        this.jobs.push(cron.schedule('0 14 * * *', () => this.weeklyWarningCheck(),  { timezone: TZ }));
         this.jobs.push(cron.schedule('0 22 * * *', () => this.createDailyPost(),     { timezone: TZ }));
         this.jobs.push(cron.schedule('0 12 * * *', () => this.lockDailyPost(),       { timezone: TZ }));
         this.jobs.push(cron.schedule('0 * * * *',  () => this.lockTasksCron(),       { timezone: TZ }));
@@ -328,6 +328,11 @@ class AutomationSystem {
     }
 
     async checkAutoWarningRemoval() {
+        if (this.db.getAutoWarningsStatus && !this.db.getAutoWarningsStatus()) {
+            console.log('⏸️ Auto warnings removal is globally paused.');
+            return;
+        }
+
         const users = this.db.getAllUsers();
         const today = new Date();
         const twoWeeksAgo = new Date(today);
@@ -415,6 +420,11 @@ class AutomationSystem {
                 return;
             }
 
+            if (this.db.getAutoWarningsStatus && !this.db.getAutoWarningsStatus()) {
+                console.log('⏸️ Auto warnings are globally paused.');
+                return;
+            }
+
             const nowCairo = new Date(new Date().toLocaleString('en-US', { timeZone: TZ }));
             const todayUtc = Date.UTC(nowCairo.getFullYear(), nowCairo.getMonth(), nowCairo.getDate());
             const seasonStart = new Date(season.start_date);
@@ -428,13 +438,13 @@ class AutomationSystem {
             }
 
             const dayNumber = diffDays + 1; // 1-based داخل السيزون
-            if (![7, 14, 21, 28].includes(dayNumber)) {
-                // مش نهاية أسبوع سيزون — لا ترسل تحذيرات اليوم
+            if (![8, 15, 22, 29].includes(dayNumber)) {
+                // ليس اليوم التالي لنهاية أسبوع سيزون — لا ترسل تحذيرات اليوم
                 return;
             }
 
-            // حساب أسبوع السيزون الحالي (بلوك 7 أيام)
-            const weekIndex = Math.floor(diffDays / 7); // 0..3
+            // حساب أسبوع السيزون الذي تم تقييمه (بلوك 7 أيام)، مع إزاحة يوم للتقييم بعد النهاية
+            const weekIndex = Math.floor((diffDays - 1) / 7); // 0..3
             const weekStartDate = new Date(seasonStart);
             weekStartDate.setDate(weekStartDate.getDate() + weekIndex * 7);
             const weekEndDate = new Date(weekStartDate);

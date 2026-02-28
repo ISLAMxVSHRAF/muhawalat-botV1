@@ -108,6 +108,7 @@ function getPages(base) {
                         '`/warnings user:` — عرض سجل إنذارات عضو.',
                         '`/warnings_all` — عرض جميع الأعضاء الذين لديهم إنذارات.',
                         '`/timeout_list` — عرض الأعضاء الذين بلغوا 3 إنذارات (قائمة المهلة).',
+                        '`/warnings_auto_toggle` — إيقاف/تشغيل رادار الإنذارات التلقائية (On/Off).',
                     ].join('\n'),
                     inline: false
                 },

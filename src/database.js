@@ -70,6 +70,11 @@ class MuhawalatDatabase {
             achieve_id TEXT
         )`);
 
+        this.db.run(`CREATE TABLE IF NOT EXISTS global_settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        )`);
+
         this.db.run(`CREATE TABLE IF NOT EXISTS users (
             user_id TEXT PRIMARY KEY,
             name TEXT,
@@ -454,6 +459,43 @@ class MuhawalatDatabase {
         s.bind([guildId]);
         const r = s.step() ? s.getAsObject() : null;
         s.free(); return r;
+    }
+
+    // ==========================================
+    // GLOBAL SETTINGS (auto warnings, etc.)
+    // ==========================================
+    getAutoWarningsStatus() {
+        try {
+            const s = this.db.prepare(`SELECT value FROM global_settings WHERE key = 'auto_warnings_enabled'`);
+            const has = s.step();
+            const row = has ? s.getAsObject() : null;
+            s.free();
+            if (!row || row.value == null) return true;
+            const v = String(row.value).toLowerCase();
+            return v === '1' || v === 'true' || v === 'yes';
+        } catch (e) {
+            console.error('❌ getAutoWarningsStatus:', e.message);
+            return true;
+        }
+    }
+
+    toggleAutoWarnings() {
+        try {
+            const current = this.getAutoWarningsStatus();
+            const next = !current;
+            const value = next ? '1' : '0';
+            this.db.run(
+                `INSERT INTO global_settings (key, value)
+                 VALUES ('auto_warnings_enabled', ?)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+                [value]
+            );
+            this.save();
+            return next;
+        } catch (e) {
+            console.error('❌ toggleAutoWarnings:', e.message);
+            return this.getAutoWarningsStatus();
+        }
     }
 
     // ==========================================
