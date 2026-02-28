@@ -137,13 +137,14 @@ client.on('messageCreate', async message => {
             db.recordDailyReport(message.author.id, message.channel.id, message.content, words.length, postDate);
             await message.react('👏').catch(() => {});
             const user = db.getUser(message.author.id);
-            const confirmMsg = '✅ تم تسجيل تقريرك بنجاح!';
-            try {
-                await message.reply(confirmMsg).catch(() => null);
-            } catch (_) {
-                const m = await message.channel.send(confirmMsg).catch(() => null);
-                if (m) setTimeout(() => m.delete().catch(() => {}), 8000);
-            }
+            // ✅ رسالة تأكيد تشجيعية مؤقتة
+            const isFemale = user?.gender === 'female';
+            const name = user?.name || '';
+            const confirmMsg = isFemale
+                ? `✅ تم تسجيل تقريرك يا ${name}! 🌸`
+                : `✅ تم تسجيل تقريرك يا ${name}! 💪`;
+            const m = await message.channel.send(confirmMsg).catch(() => null);
+            if (m) setTimeout(() => m.delete().catch(() => {}), 10000);
             if (user?.thread_id) {
                 const userThread = await client.channels.fetch(user.thread_id).catch(() => null);
                 if (userThread) await updateDashboard(userThread, message.author.id, db);
