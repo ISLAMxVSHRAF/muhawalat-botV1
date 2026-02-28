@@ -340,8 +340,7 @@ function buildControlRow(section) {
             new ButtonBuilder().setCustomId('btn_add').setLabel('إضافة عادة').setStyle(ButtonStyle.Primary).setEmoji('➕'),
             new ButtonBuilder().setCustomId('btn_refresh').setLabel('تحديث').setStyle(ButtonStyle.Secondary).setEmoji('🔄'),
             new ButtonBuilder().setCustomId('btn_edit_profile').setLabel('تعديل الملف').setStyle(ButtonStyle.Secondary).setEmoji('✏️'),
-            new ButtonBuilder().setCustomId('btn_delete_mode').setLabel('حذف عادة').setStyle(ButtonStyle.Danger).setEmoji('🗑️'),
-            new ButtonBuilder().setCustomId('btn_freeze').setLabel('طلب إجازة ❄️').setStyle(ButtonStyle.Secondary)
+            new ButtonBuilder().setCustomId('btn_delete_mode').setLabel('حذف عادة').setStyle(ButtonStyle.Danger).setEmoji('🗑️')
         );
     } else if (section === 'goals') {
         btns.push(
@@ -358,9 +357,10 @@ function buildControlRow(section) {
     return new ActionRowBuilder().addComponents(btns);
 }
 
-function buildJournalRow() {
+function buildPersonalSpaceRow() {
     return new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('btn_journal').setLabel('تدوين').setStyle(ButtonStyle.Secondary).setEmoji('📝'),
+        new ButtonBuilder().setCustomId('btn_freeze').setLabel('طلب إجازة ❄️').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('btn_journal').setLabel('أضف تدوينة').setStyle(ButtonStyle.Secondary).setEmoji('📝'),
         new ButtonBuilder().setCustomId('btn_journal_log').setLabel('سجل التدوين').setStyle(ButtonStyle.Secondary).setEmoji('🗂️')
     );
 }
@@ -371,12 +371,12 @@ function buildMenuRow() {
             .setCustomId('dashboard_menu')
             .setPlaceholder('📋 القائمة...')
             .addOptions([
-                { label: '🏠 الرئيسية',              value: 'section_home',       emoji: '🏠' },
-                { label: '📊 بطاقتي والإحصائيات',   value: 'section_stats',      emoji: '📊' },
-                { label: '🏆 تحدياتي',               value: 'section_challenges', emoji: '🏆' },
-                { label: '🎯 أهدافي',                value: 'section_goals',      emoji: '🎯' },
-                { label: '📅 مراجعة يوم',            value: 'review_history',     emoji: '📅' },
-                { label: 'ℹ️ عن البوت',              value: 'about',              emoji: 'ℹ️' }
+                { label: 'الرئيسية',       value: 'section_home',       emoji: '🏠' },
+                { label: 'الإحصائيات',     value: 'section_stats',      emoji: '📊' },
+                { label: 'تحدياتي',        value: 'section_challenges', emoji: '🏆' },
+                { label: 'أهدافي',         value: 'section_goals',      emoji: '🎯' },
+                { label: 'مراجعة يوم',     value: 'review_history',     emoji: '📅' },
+                { label: 'عن البوت',       value: 'about',              emoji: 'ℹ️' }
             ])
     );
 }
@@ -397,7 +397,7 @@ async function updateDashboard(thread, userId, db, section = 'home') {
 
         if (section === 'home') {
             content = await buildHomeSection(userId, db, guildId);
-            rows = [...buildHabitRows(habits), buildControlRow('home'), buildJournalRow(), buildMenuRow()];
+            rows = [...buildHabitRows(habits), buildControlRow('home'), buildPersonalSpaceRow(), buildMenuRow()];
         } else if (section === 'stats') {
             content = await buildStatsSection(userId, db);
             rows = [buildControlRow('stats'), buildMenuRow()];
@@ -469,6 +469,14 @@ function showJournalModal(interaction) {
     modal.addComponents(
         new ActionRowBuilder().addComponents(
             new TextInputBuilder()
+                .setCustomId('journal_mood')
+                .setLabel('المود العام (اختياري)')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('اكتب كلمة أو إيموجي يعبر عن يومك...')
+                .setRequired(false)
+        ),
+        new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
                 .setCustomId('journal_content')
                 .setLabel('أفكارك')
                 .setStyle(TextInputStyle.Paragraph)
@@ -484,7 +492,9 @@ async function processJournalModal(interaction, db) {
         await interaction.deferReply({ ephemeral: true });
         const content = (interaction.fields.getTextInputValue('journal_content') || '').trim();
         if (!content) return interaction.editReply('❌ لم تُدخل أي نص.');
-        db.addJournal(interaction.user.id, content);
+        const mood = (interaction.fields.getTextInputValue('journal_mood') || '').trim();
+        const toSave = mood ? `المود: ${mood}\n${content}` : content;
+        db.addJournal(interaction.user.id, toSave);
         await interaction.editReply('تم حفظ أفكارك في مساحتك الخاصة بسرية ✅');
     } catch (e) {
         console.error('❌ processJournalModal:', e.message);
@@ -496,17 +506,20 @@ async function showJournalLog(interaction, db) {
     try {
         await interaction.deferReply({ ephemeral: true });
         const journals = db.getUserJournals ? db.getUserJournals(interaction.user.id, 25) : [];
-        if (!journals.length) return interaction.editReply('🗂️ لا توجد تدوينات بعد. استخدم **📝 تدوين** لكتابة أول تدوينة.');
+        if (!journals.length) return interaction.editReply({ content: '🗂️ لا توجد تدوينات بعد. استخدم **📝 تدوين** لكتابة أول تدوينة.', ephemeral: true });
 
         const perPage = 5;
+        const separator = '\n━━━━━━━━━━━━━━\n';
         const pages = [];
         for (let i = 0; i < journals.length; i += perPage) {
             const slice = journals.slice(i, i + perPage);
+            const maxEntryLen = 700;
             const desc = slice.map(j => {
                 const date = j.created_at ? new Date(j.created_at).toLocaleDateString('ar-EG', { dateStyle: 'medium' }) : '—';
-                const preview = (j.content || '').slice(0, 80) + ((j.content || '').length > 80 ? '…' : '');
-                return `**${date}**\n${preview}`;
-            }).join('\n\n');
+                let content = (j.content || '').trim();
+                if (content.length > maxEntryLen) content = content.slice(0, maxEntryLen) + '…';
+                return `**📅 ${date}**\n${content}`;
+            }).join(separator);
             const embed = new EmbedBuilder()
                 .setColor(CONFIG.COLORS?.primary || 0x2ecc71)
                 .setTitle('🗂️ سجل التدوين')
