@@ -4,6 +4,9 @@
 // ==========================================
 
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 const CONFIG = require('../config');
 
 const ERR = CONFIG.ADMIN?.unifiedErrorMessage || '❌ حدث خطأ داخلي، تمت كتابة التفاصيل في السجل.';
@@ -59,16 +62,34 @@ const dbBackupData = new SlashCommandBuilder()
     .setDescription('نسخة احتياطية من قاعدة البيانات')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
 
-async function dbBackupExecute(interaction) {
+async function dbBackupExecute(interaction, { db } = {}) {
+    let tmpPath = null;
     try {
         await interaction.deferReply({ ephemeral: true });
-        const fs = require('fs');
-        const name = `muhawalat.db.backup.${Date.now()}`;
-        fs.copyFileSync('muhawalat.db', name);
-        await interaction.editReply(`✅ **نسخة احتياطية:** \`${name}\``);
+        const srcPath = db?.dbPath || 'muhawalat.db';
+
+        // تأكد إن آخر تغييرات محفوظة قبل النسخ
+        try { db?.saveImmediate?.(); } catch (_) {}
+
+        if (!fs.existsSync(srcPath)) {
+            return interaction.editReply(`❌ ملف الداتابيز غير موجود: \`${srcPath}\``);
+        }
+
+        const fileName = `muhawalat.db.backup.${Date.now()}.db`;
+        tmpPath = path.join(os.tmpdir(), fileName);
+        fs.copyFileSync(srcPath, tmpPath);
+
+        await interaction.editReply({
+            content: `✅ **نسخة احتياطية جاهزة:** \`${fileName}\``,
+            files: [{ attachment: tmpPath, name: fileName }]
+        });
     } catch (e) {
         console.error('❌ db_backup:', e);
         await interaction.editReply(ERR).catch(() => {});
+    } finally {
+        if (tmpPath) {
+            try { fs.unlinkSync(tmpPath); } catch (_) {}
+        }
     }
 }
 
