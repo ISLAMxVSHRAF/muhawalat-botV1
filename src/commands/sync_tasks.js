@@ -1,75 +1,39 @@
 // ==========================================
-// 🔄 SYNC TASKS — Thread ID ثم Modal (نوع + ترتيب)
+// 🔄 SYNC TASKS — Thread + نوع + ترتيب (خيارات مباشرة)
 // ==========================================
 
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const CONFIG = require('../config');
 const { updateDashboard } = require('../utils/dashboard');
 const ERR = CONFIG.ADMIN?.unifiedErrorMessage || '❌ حدث خطأ داخلي.';
 
-const _syncTasksThreadCache = new Map();
-
 const data = new SlashCommandBuilder()
     .setName('sync_tasks')
-    .setDescription('مزامنة مهمة من Thread (أدخل الـ Thread ثم اختر النوع والترتيب)')
+    .setDescription('مزامنة مهمة من Thread (معرف الثريد + النوع + الرقم)')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addStringOption(o => o.setName('thread_id').setDescription('ID بتاع Thread المهمة').setRequired(true));
+    .addStringOption(o => o.setName('thread_id').setDescription('ID ثريد المهمة').setRequired(true))
+    .addStringOption(o =>
+        o.setName('type')
+            .setDescription('نوع المهمة')
+            .setRequired(true)
+            .addChoices(
+                { name: 'أسبوعية', value: 'weekly' },
+                { name: 'شهرية', value: 'monthly' }
+            )
+    )
+    .addIntegerOption(o => o.setName('number').setDescription('رقم أو ترتيب المهمة').setRequired(true));
 
 async function execute(interaction, { db, client }) {
     try {
+        await interaction.deferReply({ ephemeral: true });
+
         const threadId = interaction.options.getString('thread_id').trim();
-        const thread = await client.channels.fetch(threadId).catch(() => null);
-        if (!thread) return interaction.reply({ content: '❌ مش قادر أجيب الـ Thread — تأكد من الـ ID', ephemeral: true });
-
-        _syncTasksThreadCache.set(interaction.user.id, threadId);
-
-        const modal = new ModalBuilder()
-            .setCustomId('modal_sync_tasks')
-            .setTitle('📌 نوع المهمة والترتيب');
-        modal.addComponents(
-            new ActionRowBuilder().addComponents(
-                new TextInputBuilder()
-                    .setCustomId('type')
-                    .setLabel('أسبوعية أو شهرية (weekly / monthly)')
-                    .setStyle(TextInputStyle.Short)
-                    .setPlaceholder('weekly أو monthly')
-                    .setRequired(true)
-            ),
-            new ActionRowBuilder().addComponents(
-                new TextInputBuilder()
-                    .setCustomId('order')
-                    .setLabel('الرقم / الترتيب (مثال: 1 أو 2)')
-                    .setStyle(TextInputStyle.Short)
-                    .setPlaceholder('1')
-                    .setRequired(true)
-            )
-        );
-        await interaction.showModal(modal);
-    } catch (e) {
-        console.error('❌ sync_tasks:', e);
-        await interaction.reply({ content: ERR, ephemeral: true }).catch(() => {});
-    }
-}
-
-async function processSyncTasksModal(interaction, db, client) {
-    await interaction.deferReply({ ephemeral: true });
-    try {
-        const threadId = _syncTasksThreadCache.get(interaction.user.id);
-        _syncTasksThreadCache.delete(interaction.user.id);
-        if (!threadId) return interaction.editReply('❌ انتهت الجلسة. نفّذ /sync_tasks مرة أخرى.');
-
-        let type = (interaction.fields.getTextInputValue('type') || '').trim().toLowerCase();
-        if (type === 'أسبوعية' || type === 'اسبوعية') type = 'weekly';
-        if (type === 'شهرية') type = 'monthly';
-        if (type !== 'weekly' && type !== 'monthly') {
-            return interaction.editReply('❌ النوع لازم يكون weekly أو monthly');
-        }
-
-        const orderNum = parseInt(interaction.fields.getTextInputValue('order').trim(), 10);
-        const order = isNaN(orderNum) ? 1 : Math.max(1, orderNum);
+        const type = interaction.options.getString('type');
+        const orderNum = interaction.options.getInteger('number');
+        const order = isNaN(orderNum) || orderNum < 1 ? 1 : orderNum;
 
         const thread = await client.channels.fetch(threadId).catch(() => null);
-        if (!thread) return interaction.editReply('❌ الـ Thread غير موجود.');
+        if (!thread) return interaction.editReply('❌ الـ Thread غير موجود. تأكد من الـ ID.');
 
         const now = new Date();
         const year = now.getFullYear();
@@ -96,7 +60,6 @@ async function processSyncTasksModal(interaction, db, client) {
 
         if (!task) return interaction.editReply('❌ فشل حفظ المهمة.');
 
-        // مزامنة الإتمام من الرسائل
         let allMessages = [];
         let lastId = null;
         while (true) {
@@ -165,9 +128,9 @@ async function processSyncTasksModal(interaction, db, client) {
 
         await interaction.editReply({ embeds: [embed] });
     } catch (e) {
-        console.error('❌ processSyncTasksModal:', e);
+        console.error('❌ sync_tasks:', e);
         await interaction.editReply(ERR).catch(() => {});
     }
 }
 
-module.exports = { data, execute, processSyncTasksModal };
+module.exports = { data, execute };

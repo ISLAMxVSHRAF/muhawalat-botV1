@@ -28,7 +28,6 @@ const { handleHelpButton } = require('./src/commands/help');
 const { handleDailyReportButton } = require('./src/commands/dailyReport');
 const { processTaskCreateModal } = require('./src/commands/tasks');
 const { processChallengeCreateModal } = require('./src/commands/challenges');
-const { processSyncTasksModal } = require('./src/commands/sync_tasks');
 const { processSyncChallengeModal } = require('./src/commands/sync_challenge');
 const { processScheduleAddModal } = require('./src/commands/scheduler');
 const { processAutorespondAddModal } = require('./src/commands/autoResponder');
@@ -506,7 +505,6 @@ client.on('interactionCreate', async interaction => {
             }
             if (id.startsWith('modal_task_create_')) return processTaskCreateModal(interaction, db, client);
             if (id === 'modal_challenge_create') return processChallengeCreateModal(interaction, db, client);
-            if (id === 'modal_sync_tasks') return processSyncTasksModal(interaction, db, client);
             if (id === 'modal_sync_challenge') return processSyncChallengeModal(interaction, db, client);
             if (id === 'modal_journal') return processJournalModal(interaction, db);
             if (id.startsWith('modal_schedule_add_')) return processScheduleAddModal(interaction, { automation });

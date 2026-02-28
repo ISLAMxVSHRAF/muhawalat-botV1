@@ -8,7 +8,7 @@ const CONFIG = require('../config');
 const ERR = CONFIG.ADMIN?.unifiedErrorMessage || '❌ حدث خطأ داخلي.';
 
 // دليل الأدمن — 4 صفحات، صياغة احترافية موجهة للإداريين فقط
-function getPages(base) {
+function getPages() {
     return [
         // ==========================================
         // 📄 صفحة 1 — الإعداد وإدارة الأعضاء
@@ -16,7 +16,6 @@ function getPages(base) {
         new EmbedBuilder()
             .setColor(CONFIG.COLORS.primary)
             .setTitle('🛠️ دليل الأدمن | صفحة 1/4')
-            .setDescription(`**لوحة التحكم:** [رابط لوحة الأدمن](${base}/admin.html)`)
             .addFields(
                 {
                     name: '🚀 الإعداد',
@@ -74,7 +73,7 @@ function getPages(base) {
                     value: [
                         '`/task_create type: [image:]` — إنشاء مهمة (أسبوعية/شهرية) عبر Modal؛ تُنشر في المنتدى. الأسبوعية تُقفل بعد 48 ساعة، الشهرية بعد 5 أيام.',
                         '`/task_list` — عرض المهام النشطة ومواعيد القفل.',
-                        '`/sync_tasks thread_id:` — إدخال معرف الثريد ثم اختيار النوع (أسبوعي/شهري) والترتيب عبر Modal. المزامنة تسجّل الإتمام من الرسائل: **رسالة تُعتبر مكتملة إذا بلغت 10 كلمات فأكثر، أو إذا احتوت على مرفق (صورة/ملف)**؛ في حال المرفق يُحفظ رابط الملف كدليل إتمام.',
+                        '**`/sync_tasks thread_id: type: number:`**\n> يزامن إتمام المهام من ثريد معين مباشرة بدون نوافذ (يدعم النصوص والصور).',
                     ].join('\n'),
                     inline: false
                 },
@@ -200,8 +199,7 @@ const data = new SlashCommandBuilder()
 
 async function execute(interaction) {
     try {
-        const base = process.env.WEB_BASE_URL || `http://localhost:${process.env.WEB_PORT || 3000}`;
-        const pages = getPages(base);
+        const pages = getPages();
         await interaction.reply({
             embeds: [pages[0]],
             components: [getRow(0, pages.length)],
@@ -215,8 +213,7 @@ async function execute(interaction) {
 
 async function handleHelpButton(interaction) {
     try {
-        const base = process.env.WEB_BASE_URL || `http://localhost:${process.env.WEB_PORT || 3000}`;
-        const pages = getPages(base);
+        const pages = getPages();
         const id = interaction.customId;
 
         let page = parseInt(id.split('_')[2]);
