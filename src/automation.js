@@ -740,7 +740,7 @@ class AutomationSystem {
             const ch = await this.client.channels.fetch(adminChId).catch(() => null);
             if (!ch) return;
 
-            await ch.send('⚠️ تنبيه يا ليدر: اقترب الشهر من نهايته (متبقي 5 أيام)، استعد للإغلاق!');
+            await ch.send('⚠️ **تنبيه للإدارة:** اقترب الموسم الحالي من نهايته (متبقي 5 أيام). استعد لمراجعة الإنجازات وبدء موسم جديد!');
         } catch (e) {
             console.error('❌ customMonthWarning:', e.message);
         }
