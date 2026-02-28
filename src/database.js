@@ -586,6 +586,15 @@ class MuhawalatDatabase {
     }
 
     /**
+     * حذف جميع التقارير اليومية ليوم معين (لأمر unsync_reports)
+     * @param {string} date - YYYY-MM-DD
+     */
+    removeAllReportsForDate(date) {
+        this.db.run('DELETE FROM daily_reports WHERE report_date = ?', [date]);
+        this.save();
+    }
+
+    /**
      * يرجع إحصائيات التقارير اليومية للأسبوع الماضي
      * مفيد للداشبورد والأدمن
      */

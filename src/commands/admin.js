@@ -123,11 +123,41 @@ async function endSeasonExecute(interaction, { db }) {
     }
 }
 
+// ==========================================
+// 🔄 /unsync_reports — حذف تقارير يوم معين لكل الأعضاء
+// ==========================================
+const unsyncReportsData = new SlashCommandBuilder()
+    .setName('unsync_reports')
+    .setDescription('حذف جميع التقارير اليومية ليوم معين (لإعادة المزامنة لاحقاً)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addStringOption(o => o.setName('thread_id').setDescription('معرف الـ Thread (لمطابقة أمر المزامنة)').setRequired(true))
+    .addStringOption(o => o.setName('date').setDescription('التاريخ بصيغة YYYY-MM-DD').setRequired(true));
+
+async function unsyncReportsExecute(interaction, { db }) {
+    try {
+        await interaction.deferReply({ ephemeral: true });
+        const dateStr = (interaction.options.getString('date') || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            return interaction.editReply('❌ صيغة التاريخ غير صحيحة. استخدم **YYYY-MM-DD** (مثال: 2026-02-28).');
+        }
+        const d = new Date(dateStr);
+        if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== dateStr) {
+            return interaction.editReply('❌ تاريخ غير صالح.');
+        }
+        db.removeAllReportsForDate(dateStr);
+        await interaction.editReply(`✅ تم حذف جميع التقارير اليومية لكل الأعضاء ليوم **${dateStr}** بنجاح. يمكنك إعادة المزامنة الآن.`);
+    } catch (e) {
+        console.error('❌ unsync_reports:', e);
+        await interaction.editReply(ERR).catch(() => {});
+    }
+}
+
 const commands = [
     { data: recreateDashboardData, execute: recreateDashboardExecute },
     { data: createThreadData, execute: createThreadExecute },
     { data: startSeasonData, execute: startSeasonExecute },
-    { data: endSeasonData, execute: endSeasonExecute }
+    { data: endSeasonData, execute: endSeasonExecute },
+    { data: unsyncReportsData, execute: unsyncReportsExecute }
 ];
 
 module.exports = { commands };

@@ -112,17 +112,21 @@ async function processSyncTasksModal(interaction, db, client) {
         const starter = await thread.fetchStarterMessage().catch(() => null);
         if (starter) allMessages = allMessages.filter(m => m.id !== starter.id);
 
-        const valid = allMessages.filter(m =>
-            !m.author.bot &&
-            m.content.trim().split(/\s+/).filter(w => w.length > 0).length >= 10
-        );
+        const valid = allMessages.filter(m => {
+            if (m.author.bot) return false;
+            const words = m.content.trim().split(/\s+/).filter(w => w.length > 0).length;
+            const hasAttachment = m.attachments && m.attachments.size > 0;
+            return words >= 10 || hasAttachment;
+        });
 
         const userMap = new Map();
         for (const msg of valid) {
             const uid = msg.author.id;
-            const words = msg.content.trim().split(/\s+/).length;
+            const words = msg.content.trim().split(/\s+/).filter(w => w.length > 0).length;
+            const hasAttachment = msg.attachments && msg.attachments.size > 0;
+            const score = words + (hasAttachment ? 1000 : 0);
             const existing = userMap.get(uid);
-            if (!existing || words > existing.words) userMap.set(uid, { msg, words });
+            if (!existing || score > existing.score) userMap.set(uid, { msg, score });
         }
 
         let registered = 0, skipped = 0;
@@ -133,7 +137,12 @@ async function processSyncTasksModal(interaction, db, client) {
                 db.createUser(userId, name, '', 'male', null, null);
             }
             if (db.getUserTaskCompletions(task.id, userId) > 0) { skipped++; continue; }
-            db.completeTask(task.id, userId, msg.id, msg.content);
+            let content = (msg.content || '').trim();
+            if (msg.attachments && msg.attachments.size > 0) {
+                const url = msg.attachments.first().url;
+                content = content ? `${content}\n${url}` : url;
+            }
+            db.completeTask(task.id, userId, msg.id, content);
             registered++;
             const user = db.getUser(userId);
             if (user?.thread_id) {
