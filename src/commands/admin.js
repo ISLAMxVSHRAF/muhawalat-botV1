@@ -131,21 +131,24 @@ const unsyncReportsData = new SlashCommandBuilder()
     .setDescription('حذف جميع التقارير اليومية ليوم معين (لإعادة المزامنة لاحقاً)')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addStringOption(o => o.setName('thread_id').setDescription('معرف الـ Thread (لمطابقة أمر المزامنة)').setRequired(true))
-    .addStringOption(o => o.setName('date').setDescription('التاريخ بصيغة YYYY-MM-DD').setRequired(true));
+    .addStringOption(o => o.setName('date').setDescription('تاريخ اليوم بصيغة DD-MM-YYYY').setRequired(true));
 
 async function unsyncReportsExecute(interaction, { db }) {
     try {
         await interaction.deferReply({ ephemeral: true });
-        const dateStr = (interaction.options.getString('date') || '').trim();
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-            return interaction.editReply('❌ صيغة التاريخ غير صحيحة. استخدم **YYYY-MM-DD** (مثال: 2026-02-28).');
+        const input = (interaction.options.getString('date') || '').trim();
+        const m = input.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+        if (!m) {
+            return interaction.editReply('❌ صيغة التاريخ غير صحيحة. استخدم **DD-MM-YYYY** (مثال: 28-02-2026).');
         }
-        const d = new Date(dateStr);
-        if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== dateStr) {
-            return interaction.editReply('❌ تاريخ غير صالح.');
+        const [, dd, mm, yyyy] = m;
+        const isoDate = `${yyyy}-${mm}-${dd}`;
+        const d = new Date(isoDate);
+        if (Number.isNaN(d.getTime()) || d.getFullYear().toString() !== yyyy || String(d.getMonth() + 1).padStart(2, '0') !== mm || String(d.getDate()).padStart(2, '0') !== dd) {
+            return interaction.editReply('❌ تاريخ غير صالح. تأكد من اليوم والشهر والسنة.');
         }
-        db.removeAllReportsForDate(dateStr);
-        await interaction.editReply(`✅ تم حذف جميع التقارير اليومية لكل الأعضاء ليوم **${dateStr}** بنجاح. يمكنك إعادة المزامنة الآن.`);
+        db.removeAllReportsForDate(isoDate);
+        await interaction.editReply(`✅ تم حذف جميع التقارير اليومية لكل الأعضاء ليوم **${input}** بنجاح. يمكنك إعادة المزامنة الآن.`);
     } catch (e) {
         console.error('❌ unsync_reports:', e);
         await interaction.editReply(ERR).catch(() => {});
