@@ -299,8 +299,6 @@ client.on('interactionCreate', async interaction => {
                 const weekEndStr = toStr(weekEndDate);
                 const seasonStartStr = toStr(seasonStart);
 
-                const allUsers = db.getAllUsers();
-
                 const tierMeta = {
                     '7':  { name: '🏆 محاولات مثالية', match: (c) => c >= 7 },
                     '6':  { name: '🔥 محاولات ممتازة', match: (c) => c === 6 },
@@ -310,6 +308,32 @@ client.on('interactionCreate', async interaction => {
                     '0':  { name: '⏳ في انتظار المحاولة', match: (c) => c === 0 },
                 };
 
+                if (tierKey === 'me') {
+                    const userId = interaction.user.id;
+                    const dailyCount = db.getReportCountInRange(userId, weekStartStr, weekEndStr);
+                    const isWeeklyDone = db.getCompletedTasksInRange(userId, 'weekly', weekStartStr, weekEndStr) > 0;
+                    const isMonthlyDone = db.getCompletedTasksInRange(userId, 'monthly', seasonStartStr, weekEndStr) > 0;
+                    const weeklyMark = isWeeklyDone ? '✅' : '❌';
+                    const monthlyMark = isMonthlyDone ? '✅' : '❌';
+                    let tierName = tierMeta['0'].name;
+                    for (const key of ['7', '6', '5', '34', '12', '0']) {
+                        if (tierMeta[key].match(dailyCount)) { tierName = tierMeta[key].name; break; }
+                    }
+                    const personalEmbed = new EmbedBuilder()
+                        .setColor(CONFIG.COLORS?.success ?? 0x2ecc71)
+                        .setTitle('🔍 حصادك الشخصي لهذا الأسبوع')
+                        .setDescription(
+                            `أهلاً بك يا <@${userId}>! 🌟\n\n` +
+                            `**تصنيفك هذا الأسبوع:** ${tierName}\n` +
+                            `**التقارير اليومية:** ${dailyCount}/7\n` +
+                            `**المهمة الأسبوعية:** ${weeklyMark}\n` +
+                            `**المهمة الشهرية:** ${monthlyMark}\n\n` +
+                            `*استمر في المحاولة، كل يوم هو فرصة جديدة للتقدم! 💪*`
+                        );
+                    return interaction.editReply({ embeds: [personalEmbed] });
+                }
+
+                const allUsers = db.getAllUsers();
                 const meta = tierMeta[tierKey] || tierMeta['0'];
 
                 const lines = [];

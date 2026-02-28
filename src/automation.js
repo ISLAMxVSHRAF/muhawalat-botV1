@@ -602,35 +602,20 @@ class AutomationSystem {
 
             const totalUsers = allUsers.length;
 
-            const statsChId = process.env.STATS_CHANNEL_ID;
-            if (!statsChId) {
-                console.log('🌾 Weekly harvest skipped — STATS_CHANNEL_ID not set.');
-                return;
-            }
-
-            const statsChannel = await this.client.channels.fetch(statsChId).catch(() => null);
-            if (!statsChannel) {
-                console.log('🌾 Weekly harvest skipped — stats channel not found.');
-                return;
-            }
-
-            const lines = [];
-            lines.push('السر دايماً في الاستمرارية مش المثالية! 🌱 كل علامة (صح) هنا هي خطوة لقدام، وكل يوم وقع منك هو فرصة تعوضها وتبدأ من تاني.\n');
-            lines.push('عاش لكل حد بيحاول، ويلا بينا نشوف إحصائيات محاولاتنا الأسبوع ده بتقول إيه: 👇\n');
-            lines.push('');
-            lines.push(`🏆 محاولات مثالية: ${tiers[7].length} عضو`);
-            lines.push(`🔥 محاولات ممتازة: ${tiers[6].length} عضو`);
-            lines.push(`💪 محاولات جيدة: ${tiers[5].length} عضو`);
-            lines.push(`🚶 محاولات مستمرة: ${tiers['34'].length} عضو`);
-            lines.push(`🌱 بداية محاولة: ${tiers['12'].length} عضو`);
-            lines.push(`⏳ في انتظار المحاولة: ${tiers[0].length} عضو`);
-
-            const desc = lines.join('\n');
+            const desc = 'السر دايماً في الاستمرارية مش المثالية! 🌱 كل علامة (صح) هنا هي خطوة لقدام، وكل يوم وقع منك هو فرصة تعوضها وتبدأ من تاني.\n\nعاش لكل حد بيحاول، ويلا بينا نشوف إحصائيات محاولاتنا الأسبوع ده بتقول إيه: 👇';
 
             const embed = new EmbedBuilder()
                 .setColor(CONFIG.COLORS?.primary ?? 0x2ecc71)
-                .setTitle('📊 الحصاد الأسبوعي لمجتمع \"محاولات\"')
+                .setTitle('📊 الحصاد الأسبوعي لمجتمع "محاولات"')
                 .setDescription(desc)
+                .addFields(
+                    { name: '🏆 مثالية (7/7)', value: `**${tiers[7].length}** عضو`, inline: true },
+                    { name: '🔥 ممتازة (6/7)', value: `**${tiers[6].length}** عضو`, inline: true },
+                    { name: '💪 جيدة (5/7)', value: `**${tiers[5].length}** عضو`, inline: true },
+                    { name: '🚶 مستمرة (3-4)', value: `**${tiers['34'].length}** عضو`, inline: true },
+                    { name: '🌱 بداية (1-2)', value: `**${tiers['12'].length}** عضو`, inline: true },
+                    { name: '⏳ انتظار (0)', value: `**${tiers[0].length}** عضو`, inline: true }
+                )
                 .setFooter({
                     text: `إجمالي المحاولين الأسبوع ده: ${totalAttempters} من أصل ${totalUsers} عضو 📊 | مستنيينكم الأسبوع الجاي! 💪`
                 });
@@ -647,12 +632,16 @@ class AutomationSystem {
                 new ButtonBuilder().setCustomId(`harvest_0_${weekIndex}`).setLabel('في انتظار المحاولة').setEmoji('⏳').setStyle(ButtonStyle.Secondary)
             );
 
+            const row3 = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`harvest_me_${weekIndex}`).setLabel('حصادي الشخصي').setEmoji('🔍').setStyle(ButtonStyle.Success)
+            );
+
             if (isTest) {
                 const channel = testInteraction.channel;
                 await channel.send({
                     content: '[🧪 وضع الاختبار] تفاصيل الأسبــــــــــــــــوع في مجتمع محاولات 🫡',
                     embeds: [embed],
-                    components: [row, row2]
+                    components: [row, row2, row3]
                 });
                 await replyTest('✅ تم الإرسال.');
             } else {
@@ -669,7 +658,7 @@ class AutomationSystem {
                 }
 
                 const content = 'تفاصيل الأسبــــــــــــــــوع في مجتمع محاولات 🫡\n@everyone';
-                await statsChannel.send({ content, embeds: [embed], components: [row, row2] });
+                await statsChannel.send({ content, embeds: [embed], components: [row, row2, row3] });
                 console.log('🌾 Weekly harvest sent.');
             }
         } catch (e) {
