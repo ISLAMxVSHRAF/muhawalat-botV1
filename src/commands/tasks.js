@@ -7,11 +7,16 @@ const {
     SlashCommandBuilder,
     PermissionFlagsBits,
     EmbedBuilder,
-    ChannelType
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    ActionRowBuilder
 } = require('discord.js');
 const CONFIG = require('../config');
 
 const ERR = CONFIG.ADMIN?.unifiedErrorMessage || '❌ حدث خطأ داخلي.';
+
+const _taskCreateImageCache = new Map();
 
 const taskCreateData = new SlashCommandBuilder()
     .setName('task_create')
@@ -22,17 +27,53 @@ const taskCreateData = new SlashCommandBuilder()
             { name: 'أسبوعية', value: 'weekly' },
             { name: 'شهرية', value: 'monthly' }
         ).setRequired(true))
-    .addStringOption(o => o.setName('title').setDescription('عنوان المهمة').setRequired(true))
-    .addStringOption(o => o.setName('description').setDescription('وصف المهمة').setRequired(true))
-    .addAttachmentOption(o => o.setName('image').setDescription('صورة مرفقة مع المهمة (اختياري)').setRequired(false));
+    .addAttachmentOption(o => o.setName('image').setDescription('صورة مرفقة (اختياري)').setRequired(false));
 
 async function taskCreateExecute(interaction, { db, client }) {
-    await interaction.deferReply({ ephemeral: true });
     try {
         const type = interaction.options.getString('type');
-        const title = interaction.options.getString('title').trim();
-        const description = interaction.options.getString('description').trim();
         const image = interaction.options.getAttachment('image');
+        const key = `${interaction.user.id}_task_create`;
+        if (image) _taskCreateImageCache.set(key, image.url);
+        const modal = new ModalBuilder()
+            .setCustomId(`modal_task_create_${type}`)
+            .setTitle('📌 مهمة جديدة');
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('title')
+                    .setLabel('العنوان')
+                    .setStyle(TextInputStyle.Short)
+                    .setPlaceholder('عنوان المهمة')
+                    .setRequired(true)
+            ),
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('description')
+                    .setLabel('الوصف')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setPlaceholder('وصف المهمة')
+                    .setRequired(true)
+            )
+        );
+        await interaction.showModal(modal);
+    } catch (e) {
+        console.error('❌ task_create:', e);
+        await interaction.reply({ content: ERR, ephemeral: true }).catch(() => {});
+    }
+}
+
+async function processTaskCreateModal(interaction, db, client) {
+    const id = interaction.customId;
+    if (!id.startsWith('modal_task_create_')) return;
+    await interaction.deferReply({ ephemeral: true });
+    try {
+        const type = id.replace('modal_task_create_', '');
+        const key = `${interaction.user.id}_task_create`;
+        const imageUrl = _taskCreateImageCache.get(key) || null;
+        _taskCreateImageCache.delete(key);
+        const title = interaction.fields.getTextInputValue('title').trim();
+        const description = interaction.fields.getTextInputValue('description').trim();
 
         const forumId = type === 'weekly'
             ? process.env.WEEKLY_TASKS_FORUM_ID
@@ -57,22 +98,24 @@ async function taskCreateExecute(interaction, { db, client }) {
 
         const typeAr = type === 'weekly' ? 'الأسبوعية' : 'الشهرية';
 
+        const content = [
+            `# 📌 المهمة ${typeAr}`,
+            '',
+            `**${title}**`,
+            '',
+            description,
+            '',
+            `⏰ آخر موعد للتسجيل: <t:${Math.floor(lockAt.getTime() / 1000)}:F>`,
+            '',
+            '✅ **عشان تسجل إتمامك، اكتب رسالة فوق 10 كلمات**'
+        ].join('\n');
+
+        const messageOpts = { content };
+        if (imageUrl) messageOpts.files = [imageUrl];
+
         const thread = await forum.threads.create({
             name: `📌 المهمة ${typeAr} | ${title}`,
-            message: {
-                content: [
-                    `# 📌 المهمة ${typeAr}`,
-                    '',
-                    `**${title}**`,
-                    '',
-                    description,
-                    '',
-                    `⏰ آخر موعد للتسجيل: <t:${Math.floor(lockAt.getTime() / 1000)}:F>`,
-                    '',
-                    '✅ **عشان تسجل إتمامك، اكتب رسالة فوق 10 كلمات**'
-                ].join('\n'),
-                files: image ? [image.url] : [] // 👈 السطر ده اللي زاد
-            }
+            message: messageOpts
         });
 
         db.createTask(
@@ -88,7 +131,7 @@ async function taskCreateExecute(interaction, { db, client }) {
             `Thread: <#${thread.id}>`
         );
     } catch (e) {
-        console.error('❌ task_create:', e);
+        console.error('❌ processTaskCreateModal:', e);
         await interaction.editReply(ERR).catch(() => {});
     }
 }
@@ -133,4 +176,4 @@ const commands = [
     { data: taskListData, execute: taskListExecute },
 ];
 
-module.exports = { commands };
+module.exports = { commands, processTaskCreateModal };

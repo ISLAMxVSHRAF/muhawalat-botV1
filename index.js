@@ -18,7 +18,7 @@ const { showRegistrationModal, processRegistration }                            
 const { showAddHabitModal, processAddHabit, toggleHabit, showDeleteMenu, processDeleteHabit }  = require('./src/handlers/habits');
 const { showEditProfileModal, processSaveProfile, showYearlyGoalModal, showMonthlyGoalModal, showWeeklyGoalModal, processSaveYearlyGoal, processSaveMonthlyGoal, processSaveWeeklyGoal } = require('./src/handlers/profile');
 const { showStats, showAchievements }                                                           = require('./src/handlers/stats');
-const { updateDashboard } = require('./src/utils/dashboard');
+const { updateDashboard, showJournalModal, processJournalModal, showJournalLog } = require('./src/utils/dashboard');
 const { handleChallengeMessage, handleChallengeLeaderboardButton } = require('./src/commands/challenges');
 
 // Setup & message handlers (buttons/modals/auto-response)
@@ -26,6 +26,10 @@ const { handleAutoSetup, showCustomSetupModal, handleCustomSetup, showManualSetu
 const { handleAutoResponse } = require('./src/commands/autoResponder');
 const { handleHelpButton } = require('./src/commands/help');
 const { handleDailyReportButton } = require('./src/commands/dailyReport');
+const { processTaskCreateModal } = require('./src/commands/tasks');
+const { processChallengeCreateModal } = require('./src/commands/challenges');
+const { processSyncTasksModal } = require('./src/commands/sync_tasks');
+const { processSyncChallengeModal } = require('./src/commands/sync_challenge');
 
 // ==========================================
 // CLIENT
@@ -42,6 +46,11 @@ client.commands = new Collection();
 let db;
 let automation;
 
+// DB path: Railway persistent volume or local
+const dbPath = process.env.RAILWAY_ENVIRONMENT_NAME
+    ? '/app/data/muhawalat.db'
+    : path.join(__dirname, 'muhawalat.db');
+
 // ==========================================
 // READY
 // ==========================================
@@ -50,7 +59,7 @@ client.once('ready', async () => {
     console.log('🌱 MUHAWALAT BOT - READY');
     console.log('='.repeat(50));
 
-    db = new MuhawalatDatabase('muhawalat.db');
+    db = new MuhawalatDatabase(dbPath);
     await db.init();
     console.log('✅ Database initialized');
 
@@ -89,9 +98,16 @@ client.on('messageCreate', async message => {
     if (db && dailyForumId && message.channel.parentId === dailyForumId) {
         const postData = db.getDailyPostByThread(message.channel.id);
 
-        // ✅ FIX: إزالة الشرط الصارم if (postData) — استخدام Fallback على تاريخ اليوم
-        // لو postData مش موجود (مثلاً بعد مسح الداتابيز) نستخدم تاريخ اليوم كبديل
-        const postDate = postData ? postData.post_date : new Date().toISOString().split('T')[0];
+        // Shifted Day (Cairo): 22:00–23:59 = Today | 00:00–12:00 = Yesterday | 12:01–21:59 = ➖
+        const cairoNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Cairo' }));
+        const hour = cairoNow.getHours();
+        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+        const ymd = todayStr.split('-').map(Number);
+        const yesterdayDate = new Date(ymd[0], ymd[1] - 1, ymd[2] - 1);
+        const yesterdayStr = yesterdayDate.getFullYear() + '-' + String(yesterdayDate.getMonth() + 1).padStart(2, '0') + '-' + String(yesterdayDate.getDate()).padStart(2, '0');
+        let postDate = postData ? postData.post_date : todayStr;
+        if (hour >= 0 && hour < 12) postDate = yesterdayStr;
+        else if (hour >= 22 && hour <= 23) postDate = todayStr;
 
         const words = (message.content || '').trim().split(/\s+/).filter(w => w.length > 0);
 
@@ -121,14 +137,13 @@ client.on('messageCreate', async message => {
             db.recordDailyReport(message.author.id, message.channel.id, message.content, words.length, postDate);
             await message.react('👏').catch(() => {});
             const user = db.getUser(message.author.id);
-            // ✅ رسالة تأكيد تشجيعية مؤقتة
-            const isFemale = user?.gender === 'female';
-            const name = user?.name || '';
-            const confirmMsg = isFemale
-                ? `✅ تم تسجيل تقريرك يا ${name}! 🌸`
-                : `✅ تم تسجيل تقريرك يا ${name}! 💪`;
-            const m = await message.channel.send(confirmMsg).catch(() => null);
-            if (m) setTimeout(() => m.delete().catch(() => {}), 10000);
+            const confirmMsg = '✅ تم تسجيل تقريرك بنجاح!';
+            try {
+                await message.reply(confirmMsg).catch(() => null);
+            } catch (_) {
+                const m = await message.channel.send(confirmMsg).catch(() => null);
+                if (m) setTimeout(() => m.delete().catch(() => {}), 8000);
+            }
             if (user?.thread_id) {
                 const userThread = await client.channels.fetch(user.thread_id).catch(() => null);
                 if (userThread) await updateDashboard(userThread, message.author.id, db);
@@ -254,13 +269,20 @@ client.on('interactionCreate', async interaction => {
                 const thread      = interaction.channel;
                 const threadOwner = db.getUserByThread(thread.id);
                 if (threadOwner && threadOwner.user_id !== interaction.user.id) {
-                    const intruder = db.getUser(interaction.user.id);
-                    const isFemale = intruder?.gender === 'female';
-                    const msg      = isFemale ? '😤 بطلي لعب يا فنانة!' : '😤 بطل لعب يا نجم!';
-                    return interaction.reply({ content: msg, ephemeral: true });
+                    return interaction.reply({ content: '😤 بطل لعب يا نجم! دي مش مساحتك.', ephemeral: true });
+                }
+                const ownerId = threadOwner?.user_id || interaction.user.id;
+                if (ownerId === interaction.user.id && !db.getUser(interaction.user.id)) {
+                    const cleanName = (thread.name || '')
+                        .replace(/\s*مساحة\s*/gi, '')
+                        .replace(/[\u{1F300}-\u{1F9FF}]/gu, '')
+                        .replace(/\s+/g, ' ')
+                        .trim() || interaction.user.globalName || interaction.user.username;
+                    db.createUser(interaction.user.id, cleanName, '', 'male', thread.id, null);
+                    db.updateUser(interaction.user.id, { thread_id: thread.id });
                 }
                 await interaction.deferUpdate();
-                await updateDashboard(thread, threadOwner?.user_id || interaction.user.id, db, section);
+                await updateDashboard(thread, ownerId, db, section);
                 return;
             }
             if (id === 'setup_auto')       return handleAutoSetup(interaction, db);
@@ -268,10 +290,16 @@ client.on('interactionCreate', async interaction => {
             if (id === 'setup_manual')     return showManualSetupModal(interaction);
             if (id === 'btn_onboard')      return showRegistrationModal(interaction);
             if (id === 'btn_add') {
-                // ✅ تحقق إن اللي ضغط هو صاحب المساحة
                 const threadOwner = db.getUserByThread(interaction.channel.id);
                 if (threadOwner && threadOwner.user_id !== interaction.user.id) {
-                    return interaction.reply({ content: '❌ دي مساحة حد تاني — مش تقدر تضيف هنا.', ephemeral: true });
+                    return interaction.reply({ content: '😤 بطل لعب يا نجم! دي مش مساحتك.', ephemeral: true });
+                }
+                const ownerId = threadOwner?.user_id || interaction.user.id;
+                if (ownerId === interaction.user.id && !db.getUser(interaction.user.id)) {
+                    const thread = interaction.channel;
+                    const cleanName = (thread.name || '').replace(/\s*مساحة\s*/gi, '').replace(/[\u{1F300}-\u{1F9FF}]/gu, '').replace(/\s+/g, ' ').trim() || interaction.user.globalName || interaction.user.username;
+                    db.createUser(interaction.user.id, cleanName, '', 'male', thread.id, null);
+                    db.updateUser(interaction.user.id, { thread_id: thread.id });
                 }
                 return showAddHabitModal(interaction);
             }
@@ -300,6 +328,20 @@ client.on('interactionCreate', async interaction => {
                 return interaction.update({ content: '✅ تم التجاهل', components: [] });
             }
             if (id === 'btn_achievements') return showAchievements(interaction, db);
+            if (id === 'btn_journal') {
+                const threadOwner = db.getUserByThread(interaction.channel.id);
+                if (threadOwner && threadOwner.user_id !== interaction.user.id) {
+                    return interaction.reply({ content: '😤 بطل لعب يا نجم! دي مش مساحتك.', ephemeral: true });
+                }
+                return showJournalModal(interaction);
+            }
+            if (id === 'btn_journal_log') {
+                const threadOwner = db.getUserByThread(interaction.channel.id);
+                if (threadOwner && threadOwner.user_id !== interaction.user.id) {
+                    return interaction.reply({ content: '😤 بطل لعب يا نجم! دي مش مساحتك.', ephemeral: true });
+                }
+                return showJournalLog(interaction, db);
+            }
 
             // ✅ أزرار الـ Timeout
             if (id.startsWith('timeout_approve_')) {
@@ -313,10 +355,16 @@ client.on('interactionCreate', async interaction => {
             }
 
             if (id.startsWith('check_')) {
-                // ✅ تحقق إن اللي ضغط هو صاحب المساحة
                 const threadOwner = db.getUserByThread(interaction.channel.id);
                 if (threadOwner && threadOwner.user_id !== interaction.user.id) {
-                    return interaction.reply({ content: '❌ مش مساحتك — مش تقدر تعدل هنا.', ephemeral: true });
+                    return interaction.reply({ content: '😤 بطل لعب يا نجم! دي مش مساحتك.', ephemeral: true });
+                }
+                const ownerId = threadOwner?.user_id || interaction.user.id;
+                if (ownerId === interaction.user.id && !db.getUser(interaction.user.id)) {
+                    const thread = interaction.channel;
+                    const cleanName = (thread.name || '').replace(/\s*مساحة\s*/gi, '').replace(/[\u{1F300}-\u{1F9FF}]/gu, '').replace(/\s+/g, ' ').trim() || interaction.user.globalName || interaction.user.username;
+                    db.createUser(interaction.user.id, cleanName, '', 'male', thread.id, null);
+                    db.updateUser(interaction.user.id, { thread_id: thread.id });
                 }
                 const habitId = parseInt(id.split('_')[1]);
                 return toggleHabit(interaction, habitId, db);
@@ -350,13 +398,16 @@ client.on('interactionCreate', async interaction => {
                     const thread      = interaction.channel;
                     const threadOwner = db.getUserByThread(thread.id);
                     if (threadOwner && threadOwner.user_id !== interaction.user.id) {
-                        const intruder = db.getUser(interaction.user.id);
-                        const isFemale = intruder?.gender === 'female';
-                        const msg      = isFemale ? '😤 بطلي لعب يا فنانة!' : '😤 بطل لعب يا نجم!';
-                        return interaction.reply({ content: msg, ephemeral: true });
+                        return interaction.reply({ content: '😤 بطل لعب يا نجم! دي مش مساحتك.', ephemeral: true });
+                    }
+                    const ownerId = threadOwner?.user_id || interaction.user.id;
+                    if (ownerId === interaction.user.id && !db.getUser(interaction.user.id)) {
+                        const cleanName = (thread.name || '').replace(/\s*مساحة\s*/gi, '').replace(/[\u{1F300}-\u{1F9FF}]/gu, '').replace(/\s+/g, ' ').trim() || interaction.user.globalName || interaction.user.username;
+                        db.createUser(interaction.user.id, cleanName, '', 'male', thread.id, null);
+                        db.updateUser(interaction.user.id, { thread_id: thread.id });
                     }
                     await interaction.deferUpdate();
-                    await updateDashboard(thread, threadOwner?.user_id || interaction.user.id, db, section);
+                    await updateDashboard(thread, ownerId, db, section);
                     return;
                 }
 
@@ -404,6 +455,11 @@ client.on('interactionCreate', async interaction => {
                 const dayDisplay = new Date(isoDate).toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
                 return interaction.editReply(`📅 **تقريرك ليوم ${dayDisplay}:**\n\n${report.content || '—'}`);
             }
+            if (id.startsWith('modal_task_create_')) return processTaskCreateModal(interaction, db, client);
+            if (id === 'modal_challenge_create') return processChallengeCreateModal(interaction, db, client);
+            if (id === 'modal_sync_tasks') return processSyncTasksModal(interaction, db, client);
+            if (id === 'modal_sync_challenge') return processSyncChallengeModal(interaction, db, client);
+            if (id === 'modal_journal') return processJournalModal(interaction, db);
         }
     } catch (error) {
         console.error('❌ Interaction Error:', error);
@@ -491,7 +547,6 @@ async function executeTimeout(interaction, userId, durationMinutes, db) {
 async function showAbout(interaction) {
     const { EmbedBuilder } = require('discord.js');
     const CONFIG = require('./src/config');
-    const base   = process.env.WEB_BASE_URL || `http://localhost:${process.env.WEB_PORT||3000}`;
     const embed  = new EmbedBuilder()
         .setColor(CONFIG.COLORS.primary)
         .setTitle('📖 عن بوت محاولات')
@@ -499,9 +554,6 @@ async function showAbout(interaction) {
             'بوت محاولات في نسخته الأولية 🌱\n' +
             'تم تطويره خصيصاً لخدمة مجتمع محاولات لمساعدتكم في بناء عادات يومية قوية وتتبع إنجازاتكم بسهولة.\n\n' +
             '_لا يزال البوت قيد التطوير والتحسين المستمر._'
-        )
-        .addFields(
-            { name: '🌐 الموقع', value: `[افتح بروفايلك](${base}/member.html)` },
         )
         .setFooter({ text: 'Muhawalat Bot | محاولات', iconURL: interaction.client.user.displayAvatarURL() });
     await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });

@@ -2,7 +2,7 @@
 // 🎨 DASHBOARD UTILITY
 // ==========================================
 
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, EmbedBuilder } = require('discord.js');
 const CONFIG = require('../config');
 
 // ==========================================
@@ -20,7 +20,7 @@ function makeBar(percent, length = 10) {
 
 // ==========================================
 // 🏠 HOME SECTION
-// FIX: تستقبل الآن guildId لتمريره لـ getMissingTasks بدلاً من null
+// تم ضبط توقيت مصر (Shifted Day) وحالة المهام (➖ / ✅ / ❌)
 // ==========================================
 async function buildHomeSection(userId, db, guildId = null) {
     const user   = db.getUser(userId);
@@ -42,13 +42,83 @@ async function buildHomeSection(userId, db, guildId = null) {
     const weeklyGoals  = db.getGoals(userId, 'weekly',  currentWeek).map(g => g.goal_text);
     const mainGoal     = user.goal || user.bio || '—';
 
-    const todayIso    = now.toISOString().split('T')[0];
-    const todayReport = db.getDailyReport ? db.getDailyReport(userId, todayIso) : null;
-    // ✅ FIX: تمرير guildId الفعلي بدلاً من null لضمان عمل المقارنة في قاعدة البيانات
-    const activeTasks = db.getMissingTasks ? db.getMissingTasks(userId, guildId) : [];
-    const weeklyDone  = !activeTasks.find(t => t.type === 'weekly');
-    const monthlyDone = !activeTasks.find(t => t.type === 'monthly');
+    // ─────────────────────────────────────────
+    // ⏰ 1. معالجة تقرير اليوم (الديلي) بتوقيت مصر (Shifted Day)
+    // ─────────────────────────────────────────
+    const cairoTimeStr = now.toLocaleString("en-US", { timeZone: "Africa/Cairo" });
+    const cairoDate = new Date(cairoTimeStr);
+    const hour = cairoDate.getHours();
 
+    const formatDate = (d) => {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    };
+
+    // Shifted Day: 22:00–23:59 = Today | 00:00–12:00 = Yesterday | 12:01–21:59 = ➖
+    let dailyStatus = '➖';
+    if (hour >= 0 && hour < 12) {
+        const yesterday = new Date(cairoDate);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const report = db.getDailyReport ? db.getDailyReport(userId, formatDate(yesterday)) : null;
+        dailyStatus = report ? '✅' : '❌';
+    } else if (hour >= 22 && hour <= 23) {
+        const report = db.getDailyReport ? db.getDailyReport(userId, formatDate(cairoDate)) : null;
+        dailyStatus = report ? '✅' : '❌';
+    }
+
+    // أسبوع السبت–الجمعة (توقيت القاهرة) لعد التقارير اليومية [X/7]
+    let weekStart = new Date(cairoDate.getFullYear(), cairoDate.getMonth(), cairoDate.getDate());
+    while (weekStart.getDay() !== 6) weekStart.setDate(weekStart.getDate() - 1);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    const weekStartStr = formatDate(weekStart);
+    const weekEndStr = formatDate(weekEnd);
+    const dailyCount = db.getReportCountInRange ? db.getReportCountInRange(userId, weekStartStr, weekEndStr) : 0;
+
+    // الشهر المخصص: مهام أسبوعية [X/4] وشهرية [X/1]
+    const activeMonth = db.getActiveMonth ? db.getActiveMonth() : null;
+    let weeklyCount = 0, weeklyTotal = 4, monthlyCount = 0, monthlyTotal = 1;
+    let weeklyStatus = '➖';
+    let monthlyStatus = '➖';
+
+    if (activeMonth) {
+        const monthStart = activeMonth.start_date;
+        const monthEnd = new Date(monthStart);
+        monthEnd.setDate(monthEnd.getDate() + (activeMonth.duration_days || 30) - 1);
+        const monthEndStr = formatDate(monthEnd);
+        weeklyCount = db.getCompletedTasksInRange ? db.getCompletedTasksInRange(userId, 'weekly', monthStart, monthEndStr) : 0;
+        monthlyCount = db.getCompletedTasksInRange ? db.getCompletedTasksInRange(userId, 'monthly', monthStart, monthEndStr) : 0;
+        const totalWeekly = db.getTotalTasksInRange ? db.getTotalTasksInRange('weekly', monthStart, monthEndStr) : 4;
+        const totalMonthly = db.getTotalTasksInRange ? db.getTotalTasksInRange('monthly', monthStart, monthEndStr) : 1;
+        weeklyTotal = Math.max(1, totalWeekly);
+        monthlyTotal = Math.max(1, totalMonthly);
+        weeklyStatus = weeklyCount >= weeklyTotal ? '✅' : '❌';
+        monthlyStatus = monthlyCount >= monthlyTotal ? '✅' : '❌';
+    } else {
+        try {
+            const activeAll = db.db.prepare("SELECT type FROM tasks WHERE is_locked = 0").all();
+            const hasActiveWeekly = activeAll.some(t => t.type === 'weekly');
+            const hasActiveMonthly = activeAll.some(t => t.type === 'monthly');
+            const missingTasks = db.getMissingTasks ? db.getMissingTasks(userId, guildId) : [];
+            if (hasActiveWeekly) {
+                weeklyStatus = missingTasks.some(t => t.type === 'weekly') ? '❌' : '✅';
+                weeklyCount = missingTasks.some(t => t.type === 'weekly') ? 0 : 1;
+            }
+            if (hasActiveMonthly) {
+                monthlyStatus = missingTasks.some(t => t.type === 'monthly') ? '❌' : '✅';
+                monthlyCount = missingTasks.some(t => t.type === 'monthly') ? 0 : 1;
+            }
+        } catch (e) {
+            weeklyTotal = 4;
+            monthlyTotal = 1;
+        }
+    }
+
+    // ─────────────────────────────────────────
+    // بناء واجهة الداشبورد
+    // ─────────────────────────────────────────
     let content = `👋 **مساحة: <@${userId}>**\n📅 ${dateLabel}\n`;
     content += '```\n';
     content += '━━━━━━━━━━━━━━━━━━━━━━━━\n';
@@ -61,9 +131,9 @@ async function buildHomeSection(userId, db, guildId = null) {
     content += `Monthly : ${monthlyGoals.length ? monthlyGoals.join(' | ') : '—'}\n`;
     content += `Weekly  : ${weeklyGoals.length  ? weeklyGoals.join(' | ')  : '—'}\n\n`;
     content += `📋 COMMUNITY TASKS\n`;
-    content += `Daily   : ${todayReport  ? '✅' : '❌'}\n`;
-    content += `Weekly  : ${weeklyDone   ? '✅' : '❌'}\n`;
-    content += `Monthly : ${monthlyDone  ? '✅' : '❌'}\n\n`;
+    content += `Daily   : ${dailyStatus} [${dailyCount}/7]\n`;
+    content += `Weekly  : ${weeklyStatus} [${weeklyCount}/${weeklyTotal}]\n`;
+    content += `Monthly : ${monthlyStatus} [${monthlyCount}/${monthlyTotal}]\n\n`;
     content += `📈 HABITS — ${completed}/${total}\n`;
     content += makeBar(percent, 15) + '\n';
     content += '━━━━━━━━━━━━━━━━━━━━━━━━\n';
@@ -96,7 +166,6 @@ async function buildStatsSection(userId, db) {
     const maxStreak    = db.getUserMaxStreak    ? db.getUserMaxStreak(userId)    : streak;
     const weeklyData   = db.getWeeklyReport     ? db.getWeeklyReport(userId)    : [];
 
-    // تحدي نشط
     const activeChallenges = db.getActiveChallenges ? db.getActiveChallenges() : [];
     const userChallenge    = activeChallenges.find(c => {
         const p = db.getChallengeParticipant ? db.getChallengeParticipant(c.id, userId) : null;
@@ -239,13 +308,10 @@ async function buildGoalsSection(userId, db) {
 }
 
 // ==========================================
-// 🔘 BUILD ROWS على حسب القسم
-// FIX: slice(0, 10) لمنع تجاوز حد Discord (5 صفوف × 5 أزرار = 25 زر كحد أقصى)
-//      نعرض أقصى 10 عادات كأزرار (صفين)
+// 🔘 BUILD ROWS
 // ==========================================
 function buildHabitRows(habits) {
     const rows = [];
-    // ✅ FIX: slice(0, 10) — حد أقصى 10 عادات كأزرار لتفادي تجاوز حد Discord
     const displayHabits = habits.slice(0, 10);
     for (let i = 0; i < displayHabits.length; i += 5) {
         const row = new ActionRowBuilder();
@@ -265,7 +331,6 @@ function buildHabitRows(habits) {
 
 function buildControlRow(section) {
     const btns = [];
-
     if (section === 'home') {
         btns.push(
             new ButtonBuilder().setCustomId('btn_add').setLabel('إضافة عادة').setStyle(ButtonStyle.Primary).setEmoji('➕'),
@@ -285,8 +350,14 @@ function buildControlRow(section) {
             new ButtonBuilder().setCustomId('btn_refresh').setLabel('تحديث').setStyle(ButtonStyle.Secondary).setEmoji('🔄')
         );
     }
-
     return new ActionRowBuilder().addComponents(btns);
+}
+
+function buildJournalRow() {
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('btn_journal').setLabel('تدوين').setStyle(ButtonStyle.Secondary).setEmoji('📝'),
+        new ButtonBuilder().setCustomId('btn_journal_log').setLabel('سجل التدوين').setStyle(ButtonStyle.Secondary).setEmoji('🗂️')
+    );
 }
 
 function buildMenuRow() {
@@ -308,7 +379,6 @@ function buildMenuRow() {
 
 // ==========================================
 // 📊 UPDATE DASHBOARD
-// FIX: تمرير guild.id لـ buildHomeSection لحل مشكلة Community Tasks
 // ==========================================
 async function updateDashboard(thread, userId, db, section = 'home') {
     try {
@@ -319,12 +389,11 @@ async function updateDashboard(thread, userId, db, section = 'home') {
         let content  = '';
         let rows     = [];
 
-        // ✅ FIX: استخراج guildId من الـ thread لتمريره لـ buildHomeSection
         const guildId = thread.guild?.id || thread.guildId || null;
 
         if (section === 'home') {
             content = await buildHomeSection(userId, db, guildId);
-            rows = [...buildHabitRows(habits), buildControlRow('home'), buildMenuRow()];
+            rows = [...buildHabitRows(habits), buildControlRow('home'), buildJournalRow(), buildMenuRow()];
         } else if (section === 'stats') {
             content = await buildStatsSection(userId, db);
             rows = [buildControlRow('stats'), buildMenuRow()];
@@ -386,4 +455,66 @@ function getRankInfo(streak) {
     return CONFIG.RANKS.beginner;
 }
 
-module.exports = { updateDashboard, generateWeeklyGraph, getRankInfo };
+// ==========================================
+// 📝 JOURNAL (تدوين)
+// ==========================================
+function showJournalModal(interaction) {
+    const modal = new ModalBuilder()
+        .setCustomId('modal_journal')
+        .setTitle('📝 تدوين');
+    modal.addComponents(
+        new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+                .setCustomId('journal_content')
+                .setLabel('أفكارك')
+                .setStyle(TextInputStyle.Paragraph)
+                .setPlaceholder('اكتب ما يجول في خاطرك...')
+                .setRequired(true)
+        )
+    );
+    return interaction.showModal(modal);
+}
+
+async function processJournalModal(interaction, db) {
+    try {
+        await interaction.deferReply({ ephemeral: true });
+        const content = (interaction.fields.getTextInputValue('journal_content') || '').trim();
+        if (!content) return interaction.editReply('❌ لم تُدخل أي نص.');
+        db.addJournal(interaction.user.id, content);
+        await interaction.editReply('تم حفظ أفكارك في مساحتك الخاصة بسرية ✅');
+    } catch (e) {
+        console.error('❌ processJournalModal:', e.message);
+        await interaction.editReply({ content: '❌ حدث خطأ.', ephemeral: true }).catch(() => {});
+    }
+}
+
+async function showJournalLog(interaction, db) {
+    try {
+        await interaction.deferReply({ ephemeral: true });
+        const journals = db.getUserJournals ? db.getUserJournals(interaction.user.id, 25) : [];
+        if (!journals.length) return interaction.editReply('🗂️ لا توجد تدوينات بعد. استخدم **📝 تدوين** لكتابة أول تدوينة.');
+
+        const perPage = 5;
+        const pages = [];
+        for (let i = 0; i < journals.length; i += perPage) {
+            const slice = journals.slice(i, i + perPage);
+            const desc = slice.map(j => {
+                const date = j.created_at ? new Date(j.created_at).toLocaleDateString('ar-EG', { dateStyle: 'medium' }) : '—';
+                const preview = (j.content || '').slice(0, 80) + ((j.content || '').length > 80 ? '…' : '');
+                return `**${date}**\n${preview}`;
+            }).join('\n\n');
+            const embed = new EmbedBuilder()
+                .setColor(CONFIG.COLORS?.primary || 0x2ecc71)
+                .setTitle('🗂️ سجل التدوين')
+                .setDescription(desc)
+                .setFooter({ text: `صفحة ${Math.floor(i / perPage) + 1} من ${Math.ceil(journals.length / perPage)}` });
+            pages.push(embed);
+        }
+        await interaction.editReply({ embeds: pages.slice(0, 1), ephemeral: true });
+    } catch (e) {
+        console.error('❌ showJournalLog:', e.message);
+        await interaction.reply({ content: '❌ حدث خطأ.', ephemeral: true }).catch(() => {});
+    }
+}
+
+module.exports = { updateDashboard, generateWeeklyGraph, getRankInfo, showJournalModal, processJournalModal, showJournalLog };

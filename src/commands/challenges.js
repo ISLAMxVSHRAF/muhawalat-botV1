@@ -3,7 +3,7 @@
 // /challenge_create, /challenge_stats, /challenge_end
 // ==========================================
 
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const CONFIG = require('../config');
 
 const ERR = CONFIG.ADMIN?.unifiedErrorMessage || '❌ حدث خطأ داخلي.';
@@ -141,23 +141,56 @@ function getLeaderboardRow(page, total, challengeId) {
 }
 
 // ==========================================
-// 🏆 /challenge_create
+// 🏆 /challenge_create — Modal (Title, Description) ثم نشر كنص عادي
 // ==========================================
 const challengeCreateData = new SlashCommandBuilder()
     .setName('challenge_create')
-    .setDescription('إنشاء تحدي جديد')
+    .setDescription('إنشاء تحدي جديد (عنوان ووصف فقط — استخدم /sync_challenge لربط المدة والنقاط)')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addStringOption(o => o.setName('title').setDescription('اسم التحدي (عنوان البوست)').setRequired(true))
-    .addStringOption(o => o.setName('content').setDescription('تفاصيل ومحتوى التحدي').setRequired(true))
-    .addIntegerOption(o => o.setName('duration').setDescription('المدة بالأيام').setRequired(true))
-    .addIntegerOption(o => o.setName('challenge_time').setDescription('وقت التحدي بالدقائق').setRequired(true))
-    .addIntegerOption(o => o.setName('min_minutes').setDescription('الحد الأدنى المقبول بالدقائق').setRequired(true))
-    .addIntegerOption(o => o.setName('bonus_minutes').setDescription('أقصى دقائق بونص فوق وقت التحدي').setRequired(true))
-    .addStringOption(o => o.setName('image').setDescription('رابط صورة (اختياري)'));
+    .addAttachmentOption(o => o.setName('image').setDescription('صورة (اختياري)').setRequired(false));
+
+const _challengeCreateImageCache = new Map();
 
 async function challengeCreateExecute(interaction, { db, client }) {
     try {
-        await interaction.deferReply({ ephemeral: true });
+        const image = interaction.options.getAttachment('image');
+        const key = `${interaction.user.id}_challenge_create`;
+        if (image) _challengeCreateImageCache.set(key, image.url);
+
+        const modal = new ModalBuilder()
+            .setCustomId('modal_challenge_create')
+            .setTitle('🏆 تحدي جديد');
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('title')
+                    .setLabel('العنوان')
+                    .setStyle(TextInputStyle.Short)
+                    .setPlaceholder('اسم التحدي')
+                    .setRequired(true)
+            ),
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('content')
+                    .setLabel('الوصف / المحتوى')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setPlaceholder('تفاصيل التحدي')
+                    .setRequired(true)
+            )
+        );
+        await interaction.showModal(modal);
+    } catch (e) {
+        console.error('❌ challenge_create:', e);
+        await interaction.reply({ content: ERR, ephemeral: true }).catch(() => {});
+    }
+}
+
+async function processChallengeCreateModal(interaction, db, client) {
+    await interaction.deferReply({ ephemeral: true });
+    try {
+        const key = `${interaction.user.id}_challenge_create`;
+        const imageUrl = _challengeCreateImageCache.get(key) || null;
+        _challengeCreateImageCache.delete(key);
 
         const forumId = process.env.CHALLENGES_FORUM_ID;
         if (!forumId) return interaction.editReply('❌ CHALLENGES_FORUM_ID مش موجود في .env');
@@ -165,60 +198,22 @@ async function challengeCreateExecute(interaction, { db, client }) {
         const forumChannel = await client.channels.fetch(forumId).catch(() => null);
         if (!forumChannel) return interaction.editReply('❌ مش قادر أجيب قناة التحديات.');
 
-        const title         = interaction.options.getString('title').trim();
-        const content       = interaction.options.getString('content').trim();
-        const duration      = interaction.options.getInteger('duration');
-        const challengeTime = interaction.options.getInteger('challenge_time');
-        const minMinutes    = interaction.options.getInteger('min_minutes');
-        const bonusMinutes  = interaction.options.getInteger('bonus_minutes');
-        const imageUrl      = interaction.options.getString('image')?.trim() || null;
+        const title   = interaction.fields.getTextInputValue('title').trim();
+        const content = interaction.fields.getTextInputValue('content').trim();
 
-        const startDate = new Date();
-        const endDate   = new Date(startDate);
-        endDate.setDate(endDate.getDate() + duration);
-        const startStr  = startDate.toISOString().split('T')[0];
-        const endStr    = endDate.toISOString().split('T')[0];
-
-        // بناء محتوى رسالة البوست
-        const postContent = imageUrl
-            ? { content, files: [], embeds: [new EmbedBuilder().setImage(imageUrl)] }
-            : { content };
+        const messageOpts = { content };
+        if (imageUrl) messageOpts.files = [imageUrl];
 
         const thread = await forumChannel.threads.create({
             name: `🏆 ${title}`,
-            message: postContent
+            message: messageOpts
         });
-
-        // رسالة الشارت (فاضية في البداية)
-        const chartMsg = await thread.send('📊 **ليدربورد التحدي**\n_لم يسجل أحد بعد_');
-
-        const challengeId = db.createChallenge({
-            title,
-            description: content,
-            image_url: imageUrl,
-            keyword: null, // مش بنستخدمه — بنعتمد على ✅
-            forum_thread_id: thread.id,
-            chart_message_id: chartMsg.id,
-            start_date: startStr,
-            end_date: endStr,
-            created_by: interaction.user.id,
-            min_minutes: minMinutes,
-            max_minutes: challengeTime + bonusMinutes,
-            challenge_time: challengeTime,
-            bonus_minutes: bonusMinutes
-        });
-
-        if (!challengeId) return interaction.editReply('❌ فشل حفظ التحدي.');
 
         await interaction.editReply(
-            `✅ **تم إنشاء التحدي** (ID: \`${challengeId}\`)\n\n` +
-            `📌 **${title}**\n` +
-            `📅 من ${startStr} إلى ${endStr} (${duration} أيام)\n` +
-            `⏱️ وقت التحدي: ${challengeTime} دقيقة | حد أدنى: ${minMinutes} د | بونص: +${bonusMinutes} د\n\n` +
-            `Thread: <#${thread.id}>`
+            `✅ **تم إنشاء بوست التحدي**\n\n📌 **${title}**\n\nاستخدم \`/sync_challenge\` مع معرف الثريد لربط المدة والنقاط.\nThread: <#${thread.id}>`
         );
     } catch (e) {
-        console.error('❌ challenge_create:', e);
+        console.error('❌ processChallengeCreateModal:', e);
         await interaction.editReply(ERR).catch(() => {});
     }
 }
@@ -492,6 +487,7 @@ const commands = [
 
 module.exports = {
     commands,
+    processChallengeCreateModal,
     handleChallengeMessage,
     handleChallengeLeaderboardButton,
     announceChallengeEnd,

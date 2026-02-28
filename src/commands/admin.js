@@ -65,9 +65,52 @@ async function createThreadExecute(interaction, { db, client }) {
     }
 }
 
+// ==========================================
+// 📅 /start_month — بدء شهر مخصص
+// ==========================================
+const startMonthData = new SlashCommandBuilder()
+    .setName('start_month')
+    .setDescription('بدء شهر مخصص (إعادة ضبط الإحصائيات الشهرية)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addIntegerOption(o => o.setName('duration').setDescription('مدة الشهر بالأيام').setRequired(false));
+
+async function startMonthExecute(interaction, { db }) {
+    try {
+        await interaction.deferReply({ ephemeral: true });
+        const duration = interaction.options.getInteger('duration') ?? 30;
+        const startDate = new Date().toISOString().split('T')[0];
+        db.startCustomMonth(startDate, duration);
+        await interaction.editReply(`✅ تم بدء شهر مخصص جديد.\n📅 من **${startDate}** لمدة **${duration}** يوم.`);
+    } catch (e) {
+        console.error('❌ start_month:', e);
+        await interaction.editReply(ERR).catch(() => {});
+    }
+}
+
+// ==========================================
+// 📅 /end_month — إنهاء الشهر المخصص
+// ==========================================
+const endMonthData = new SlashCommandBuilder()
+    .setName('end_month')
+    .setDescription('إنهاء الشهر المخصص يدوياً')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
+
+async function endMonthExecute(interaction, { db }) {
+    try {
+        await interaction.deferReply({ ephemeral: true });
+        db.endCustomMonth();
+        await interaction.editReply('✅ تم إغلاق الشهر المخصص.');
+    } catch (e) {
+        console.error('❌ end_month:', e);
+        await interaction.editReply(ERR).catch(() => {});
+    }
+}
+
 const commands = [
     { data: recreateDashboardData, execute: recreateDashboardExecute },
-    { data: createThreadData, execute: createThreadExecute }
+    { data: createThreadData, execute: createThreadExecute },
+    { data: startMonthData, execute: startMonthExecute },
+    { data: endMonthData, execute: endMonthExecute }
 ];
 
 module.exports = { commands };

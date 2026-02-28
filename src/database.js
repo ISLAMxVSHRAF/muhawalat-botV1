@@ -7,7 +7,7 @@ const fs = require('fs');
 const initSqlJs = require('sql.js');
 
 class MuhawalatDatabase {
-    constructor(dbPath = 'muhawalat.db') {
+    constructor(dbPath = process.env.DB_PATH || 'muhawalat.db') {
         this.dbPath = dbPath;
         this.db = null;
         this.SQL = null;
@@ -297,6 +297,22 @@ class MuhawalatDatabase {
             thread_id  TEXT NOT NULL,
             created_at TEXT DEFAULT (datetime('now'))
         )`);
+
+        // ─── جدول التدوين (أفكار المستخدم) ───────────────────────
+        this.db.run(`CREATE TABLE IF NOT EXISTS journals (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    TEXT NOT NULL,
+            content    TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        )`);
+
+        // ─── جدول الشهر المخصص (Custom Month) ───────────────────
+        this.db.run(`CREATE TABLE IF NOT EXISTS custom_months (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            start_date    TEXT NOT NULL,
+            duration_days INTEGER NOT NULL DEFAULT 30,
+            is_active     INTEGER DEFAULT 1
+        )`);
     }
 
     // ==========================================
@@ -346,6 +362,11 @@ class MuhawalatDatabase {
             )`);
         } catch (e) { /* already exists */ }
 
+        try {
+            this.db.run(`CREATE TABLE IF NOT EXISTS journals (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT DEFAULT (datetime('now')))`);
+            this.db.run(`CREATE TABLE IF NOT EXISTS custom_months (id INTEGER PRIMARY KEY AUTOINCREMENT, start_date TEXT NOT NULL, duration_days INTEGER NOT NULL DEFAULT 30, is_active INTEGER DEFAULT 1)`);
+        } catch (e) { if (!e.message.includes('already exists')) console.warn('⚠️ Migration journals/custom_months:', e.message); }
+
         [ 'goals', 'weekly_reports', 'monthly_reports', 'yearly_reports', 'challenges', 'challenge_participants', 'challenge_daily_logs', 'tasks', 'task_completions', 'daily_posts' ].forEach(t => {
             try {
                 const defs = {
@@ -385,6 +406,14 @@ class MuhawalatDatabase {
             if (logColNames.indexOf('minutes') === -1) this.db.run('ALTER TABLE challenge_daily_logs ADD COLUMN minutes INTEGER DEFAULT 0');
             if (logColNames.indexOf('points') === -1)  this.db.run('ALTER TABLE challenge_daily_logs ADD COLUMN points  REAL DEFAULT 0');
         } catch (e) { if (!e.message.includes('duplicate column')) console.warn('⚠️ Migration challenge_daily_logs:', e.message); }
+
+        try {
+            const taskCols = this.db.prepare('PRAGMA table_info(tasks)');
+            const taskNames = [];
+            while (taskCols.step()) taskNames.push(taskCols.getAsObject().name);
+            taskCols.free();
+            if (taskNames.indexOf('task_order') === -1) this.db.run('ALTER TABLE tasks ADD COLUMN task_order INTEGER');
+        } catch (e) { if (!e.message.includes('duplicate column')) console.warn('⚠️ Migration tasks task_order:', e.message); }
 
         try {
             const arCols = this.db.prepare('PRAGMA table_info(auto_responses)');
@@ -925,6 +954,64 @@ class MuhawalatDatabase {
     }
 
     // ==========================================
+    // JOURNALS (تدوين — أفكار المستخدم)
+    // ==========================================
+    addJournal(userId, content) {
+        try {
+            this.db.run(`INSERT INTO journals (user_id, content) VALUES (?,?)`, [userId, (content || '').trim()]);
+            this.save();
+            const s = this.db.prepare('SELECT last_insert_rowid() as id');
+            s.step();
+            const id = s.getAsObject().id;
+            s.free();
+            return id;
+        } catch (e) { console.error('❌ addJournal:', e.message); return null; }
+    }
+
+    getUserJournals(userId, limit = 50) {
+        try {
+            const s = this.db.prepare(`SELECT * FROM journals WHERE user_id=? ORDER BY created_at DESC LIMIT ?`);
+            s.bind([userId, limit]);
+            const r = [];
+            while (s.step()) r.push(s.getAsObject());
+            s.free();
+            return r;
+        } catch (e) { console.error('❌ getUserJournals:', e.message); return []; }
+    }
+
+    // ==========================================
+    // CUSTOM MONTH
+    // ==========================================
+    startCustomMonth(startDate, durationDays = 30) {
+        try {
+            this.db.run(`UPDATE custom_months SET is_active = 0`);
+            this.db.run(`INSERT INTO custom_months (start_date, duration_days, is_active) VALUES (?,?,1)`, [startDate, durationDays]);
+            this.save();
+            const s = this.db.prepare('SELECT last_insert_rowid() as id');
+            s.step();
+            const id = s.getAsObject().id;
+            s.free();
+            return id;
+        } catch (e) { console.error('❌ startCustomMonth:', e.message); return null; }
+    }
+
+    endCustomMonth() {
+        try {
+            this.db.run(`UPDATE custom_months SET is_active = 0 WHERE is_active = 1`);
+            this.save();
+        } catch (e) { console.error('❌ endCustomMonth:', e.message); }
+    }
+
+    getActiveMonth() {
+        try {
+            const s = this.db.prepare(`SELECT * FROM custom_months WHERE is_active = 1 ORDER BY id DESC LIMIT 1`);
+            const r = s.step() ? s.getAsObject() : null;
+            s.free();
+            return r;
+        } catch (e) { console.error('❌ getActiveMonth:', e.message); return null; }
+    }
+
+    // ==========================================
     // ACHIEVEMENTS
     // ==========================================
     addAchievement(userId, type) {
@@ -1036,12 +1123,12 @@ class MuhawalatDatabase {
     // ==========================================
     // TASKS — مهام أسبوعية/شهرية
     // ==========================================
-    createTask(guildId, type, title, description, threadId, period, graceHours, lockAt, createdBy) {
+    createTask(guildId, type, title, description, threadId, period, graceHours, lockAt, createdBy, taskOrder = null) {
         try {
             this.db.run(
-                `INSERT INTO tasks (guild_id, type, title, description, thread_id, period, grace_hours, lock_at, created_by)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [guildId, type, title, description, threadId, period, graceHours, lockAt, createdBy]
+                `INSERT INTO tasks (guild_id, type, title, description, thread_id, period, grace_hours, lock_at, created_by, task_order)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [guildId, type, title, description, threadId, period, graceHours, lockAt, createdBy, taskOrder]
             );
             this.save();
             const s = this.db.prepare('SELECT last_insert_rowid() as id');
@@ -1058,6 +1145,18 @@ class MuhawalatDatabase {
         const r = s.step() ? s.getAsObject() : null;
         s.free();
         return r;
+    }
+
+    updateTask(taskId, fields) {
+        const allowed = ['type', 'task_order', 'period', 'lock_at', 'is_locked'];
+        const sets = [], vals = [];
+        for (const [k, v] of Object.entries(fields)) {
+            if (allowed.includes(k)) { sets.push(`${k} = ?`); vals.push(v); }
+        }
+        if (!sets.length) return;
+        vals.push(taskId);
+        this.db.run(`UPDATE tasks SET ${sets.join(', ')} WHERE id = ?`, vals);
+        this.save();
     }
 
     getActiveTasks(guildId, type) {

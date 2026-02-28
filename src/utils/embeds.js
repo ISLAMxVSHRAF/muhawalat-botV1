@@ -13,22 +13,18 @@ const { generateWeeklyGraph, getRankInfo } = require('./dashboard');
 // ==========================================
 function createStatsEmbed(user, analytics, interaction, db) {
     const { getRandomQuote } = require('./quotes');
-    
-    // ✅ FIX: Calculate current rate
-    const currentRate = analytics.totalHabits > 0 
-        ? Math.round((analytics.completedToday / analytics.totalHabits) * 100)
-        : 0;
-    
-    const graph = generateWeeklyGraph(analytics.weeklyReport, currentRate);
+    if (!user || !analytics) return new EmbedBuilder().setColor(CONFIG.COLORS?.primary || 0x2ecc71).setTitle('👤 البطاقة').setDescription('لا تتوفر بيانات.');
+    const totalHabits = analytics.totalHabits ?? 0;
+    const completedToday = analytics.completedToday ?? 0;
+    const currentRate = totalHabits > 0 ? Math.round((completedToday / totalHabits) * 100) : 0;
+    const graph = generateWeeklyGraph(analytics.weeklyReport || [], currentRate);
     const rank = getRankInfo(user.days_streak || 0);
-    
-    // ✅ NEW: اقتباس عشوائي
     const isFemale = user.gender === 'female';
     const randomQuote = getRandomQuote(isFemale);
 
     const embed = new EmbedBuilder()
-        .setColor(CONFIG.COLORS.primary)
-        .setTitle(`👤 ${user.name}`)
+        .setColor(CONFIG.COLORS?.primary || 0x2ecc71)
+        .setTitle(`👤 ${user.name || 'عضو'}`)
         .setDescription(`
 **📊 تقرير الأداء الأسبوعي**
 > ${randomQuote}
@@ -38,34 +34,14 @@ ${graph}
 \`\`\`
         `)
         .addFields(
-            { 
-                name: '💎 الرتبة', 
-                value: `**${rank.name} ${rank.emoji}**`, 
-                inline: true 
-            },
-            { 
-                name: '📈 الإجمالي', 
-                value: `**${user.total_done || 0} عادة**`, 
-                inline: true 
-            },
-            { 
-                name: '🔥 الستريك', 
-                value: `**${user.days_streak || 0} يوم**`, 
-                inline: true 
-            },
-            // ✅ FIX: حقل جديد يعرض حالة الإنذارات الحالية للعضو
-            {
-                name: '⚠️ الإنذارات',
-                value: `**${user.warning_count || 0}/3**`,
-                inline: true
-            }
-        )
-        .setThumbnail(interaction.user.displayAvatarURL())
-        .setFooter({ 
-            text: CONFIG.ACHIEVERS_MESSAGE.footer, 
-            iconURL: interaction.client.user.displayAvatarURL() 
-        });
-
+            { name: '💎 الرتبة', value: `**${rank.name} ${rank.emoji}**`, inline: true },
+            { name: '📈 الإجمالي', value: `**${user.total_done || 0} عادة**`, inline: true },
+            { name: '🔥 الستريك', value: `**${user.days_streak || 0} يوم**`, inline: true },
+            { name: '⚠️ الإنذارات', value: `**${user.warning_count || 0}/3**`, inline: true }
+        );
+    if (interaction?.user?.displayAvatarURL) embed.setThumbnail(interaction.user.displayAvatarURL());
+    const footerText = (CONFIG.ACHIEVERS_MESSAGE && CONFIG.ACHIEVERS_MESSAGE.footer) ? CONFIG.ACHIEVERS_MESSAGE.footer : 'محاولات';
+    embed.setFooter({ text: footerText, iconURL: interaction?.client?.user?.displayAvatarURL?.() || null });
     return embed;
 }
 

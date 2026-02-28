@@ -44,6 +44,7 @@ class AutomationSystem {
         this.jobs.push(cron.schedule('0 12 * * *', () => this.lockDailyPost(),       { timezone: TZ }));
         this.jobs.push(cron.schedule('0 * * * *',  () => this.lockTasksCron(),       { timezone: TZ }));
         this.jobs.push(cron.schedule('0 23 * * *', () => this.checkExpiredChallenges(), { timezone: TZ }));
+        this.jobs.push(cron.schedule('0 0 * * *', () => this.customMonthWarning(), { timezone: TZ }));
 
         this.loadScheduledMessages();
         console.log('✅ Automation started\n');
@@ -625,6 +626,37 @@ class AutomationSystem {
 
         if (firstDiscordUser) embed.setThumbnail(firstDiscordUser.displayAvatarURL());
         return embed;
+    }
+
+    // ==========================================
+    // ⚠️ CUSTOM MONTH — تنبيه قبل 5 أيام من النهاية
+    // ==========================================
+    async customMonthWarning() {
+        try {
+            const active = this.db.getActiveMonth();
+            if (!active) return;
+
+            const start = new Date(active.start_date);
+            const end = new Date(start);
+            end.setDate(end.getDate() + (active.duration_days || 30));
+            const warningDay = new Date(start);
+            warningDay.setDate(warningDay.getDate() + (active.duration_days || 30) - 5);
+
+            const now = new Date();
+            const today = now.toISOString().split('T')[0];
+            const warnDate = warningDay.toISOString().split('T')[0];
+            if (today !== warnDate) return;
+
+            const adminChId = process.env.ADMIN_CHANNEL_ID;
+            if (!adminChId) return;
+
+            const ch = await this.client.channels.fetch(adminChId).catch(() => null);
+            if (!ch) return;
+
+            await ch.send('⚠️ تنبيه يا ليدر: اقترب الشهر من نهايته (متبقي 5 أيام)، استعد للإغلاق!');
+        } catch (e) {
+            console.error('❌ customMonthWarning:', e.message);
+        }
     }
 
     // ==========================================
