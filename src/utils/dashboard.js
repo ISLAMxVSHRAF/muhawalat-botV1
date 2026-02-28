@@ -68,51 +68,47 @@ async function buildHomeSection(userId, db, guildId = null) {
         dailyStatus = report ? '✅' : '❌';
     }
 
-    // أسبوع السبت–الجمعة (توقيت القاهرة) لعد التقارير اليومية [X/7]
-    let weekStart = new Date(cairoDate.getFullYear(), cairoDate.getMonth(), cairoDate.getDate());
-    while (weekStart.getDay() !== 6) weekStart.setDate(weekStart.getDate() - 1);
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekEnd.getDate() + 6);
-    const weekStartStr = formatDate(weekStart);
-    const weekEndStr = formatDate(weekEnd);
-    const dailyCount = db.getReportCountInRange ? db.getReportCountInRange(userId, weekStartStr, weekEndStr) : 0;
-
-    // الشهر المخصص: مهام أسبوعية [X/4] وشهرية [X/1]
-    const activeMonth = db.getActiveMonth ? db.getActiveMonth() : null;
+    // مواسم (Seasons) 28 يوم — نحسب التراكرز نسبة للموسم الحالي
+    const activeSeason = db.getActiveMonth ? db.getActiveMonth() : null;
+    let dailyCount = 0;
     let weeklyCount = 0, weeklyTotal = 4, monthlyCount = 0, monthlyTotal = 1;
     let weeklyStatus = '➖';
     let monthlyStatus = '➖';
 
-    if (activeMonth) {
-        const monthStart = activeMonth.start_date;
-        const monthEnd = new Date(monthStart);
-        monthEnd.setDate(monthEnd.getDate() + (activeMonth.duration_days || 30) - 1);
-        const monthEndStr = formatDate(monthEnd);
-        weeklyCount = db.getCompletedTasksInRange ? db.getCompletedTasksInRange(userId, 'weekly', monthStart, monthEndStr) : 0;
-        monthlyCount = db.getCompletedTasksInRange ? db.getCompletedTasksInRange(userId, 'monthly', monthStart, monthEndStr) : 0;
-        const totalWeekly = db.getTotalTasksInRange ? db.getTotalTasksInRange('weekly', monthStart, monthEndStr) : 4;
-        const totalMonthly = db.getTotalTasksInRange ? db.getTotalTasksInRange('monthly', monthStart, monthEndStr) : 1;
-        weeklyTotal = Math.max(1, totalWeekly);
-        monthlyTotal = Math.max(1, totalMonthly);
-        weeklyStatus = weeklyCount >= weeklyTotal ? '✅' : '❌';
-        monthlyStatus = monthlyCount >= monthlyTotal ? '✅' : '❌';
-    } else {
-        try {
-            const activeAll = db.db.prepare("SELECT type FROM tasks WHERE is_locked = 0").all();
-            const hasActiveWeekly = activeAll.some(t => t.type === 'weekly');
-            const hasActiveMonthly = activeAll.some(t => t.type === 'monthly');
-            const missingTasks = db.getMissingTasks ? db.getMissingTasks(userId, guildId) : [];
-            if (hasActiveWeekly) {
-                weeklyStatus = missingTasks.some(t => t.type === 'weekly') ? '❌' : '✅';
-                weeklyCount = missingTasks.some(t => t.type === 'weekly') ? 0 : 1;
-            }
-            if (hasActiveMonthly) {
-                monthlyStatus = missingTasks.some(t => t.type === 'monthly') ? '❌' : '✅';
-                monthlyCount = missingTasks.some(t => t.type === 'monthly') ? 0 : 1;
-            }
-        } catch (e) {
+    if (activeSeason) {
+        const seasonStartDate = new Date(activeSeason.start_date);
+        const seasonStartUTC = Date.UTC(seasonStartDate.getFullYear(), seasonStartDate.getMonth(), seasonStartDate.getDate());
+        const todayUTC = Date.UTC(cairoDate.getFullYear(), cairoDate.getMonth(), cairoDate.getDate());
+        const diffDays = Math.floor((todayUTC - seasonStartUTC) / (24 * 60 * 60 * 1000));
+        const duration = activeSeason.duration_days || 28;
+
+        if (diffDays >= 0 && diffDays < duration) {
+            const seasonStartStr = formatDate(seasonStartDate);
+            const seasonEnd = new Date(seasonStartDate);
+            seasonEnd.setDate(seasonEnd.getDate() + duration - 1);
+            const seasonEndStr = formatDate(seasonEnd);
+
+            // أسبوع الموسم الحالي (7 أيام متتالية داخل الـ Season)
+            const weekIndex = Math.floor(diffDays / 7); // 0..3
+            const blockStart = new Date(seasonStartDate);
+            blockStart.setDate(blockStart.getDate() + weekIndex * 7);
+            const blockEnd = new Date(blockStart);
+            blockEnd.setDate(blockEnd.getDate() + 6);
+            const blockStartStr = formatDate(blockStart);
+            const blockEndStr = formatDate(blockEnd);
+
+            // Daily [X/7] — تقارير هذا البلوك فقط
+            dailyCount = db.getReportCountInRange ? db.getReportCountInRange(userId, blockStartStr, blockEndStr) : 0;
+
+            // Weekly [X/4] — عدد المهام الأسبوعية المكتملة في الموسم كله
+            weeklyCount = db.getCompletedTasksInRange ? db.getCompletedTasksInRange(userId, 'weekly', seasonStartStr, seasonEndStr) : 0;
             weeklyTotal = 4;
+            weeklyStatus = weeklyCount >= weeklyTotal ? '✅' : '❌';
+
+            // Monthly [X/1] — عدد المهام الشهرية (الموسمية) في الموسم كله
+            monthlyCount = db.getCompletedTasksInRange ? db.getCompletedTasksInRange(userId, 'monthly', seasonStartStr, seasonEndStr) : 0;
             monthlyTotal = 1;
+            monthlyStatus = monthlyCount >= monthlyTotal ? '✅' : '❌';
         }
     }
 

@@ -66,42 +66,59 @@ async function createThreadExecute(interaction, { db, client }) {
 }
 
 // ==========================================
-// 📅 /start_month — بدء شهر مخصص
+// 📅 /start_season — بدء Season جديد (28 يوم)
 // ==========================================
-const startMonthData = new SlashCommandBuilder()
-    .setName('start_month')
-    .setDescription('بدء شهر مخصص (إعادة ضبط الإحصائيات الشهرية)')
+const startSeasonData = new SlashCommandBuilder()
+    .setName('start_season')
+    .setDescription('بدء Season جديد مدته 28 يوم (Cycle)')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addIntegerOption(o => o.setName('duration').setDescription('مدة الشهر بالأيام').setRequired(false));
+    .addStringOption(o =>
+        o.setName('start_date')
+            .setDescription('تاريخ البداية بصيغة DD-MM-YYYY')
+            .setRequired(true)
+    );
 
-async function startMonthExecute(interaction, { db }) {
+async function startSeasonExecute(interaction, { db }) {
     try {
         await interaction.deferReply({ ephemeral: true });
-        const duration = interaction.options.getInteger('duration') ?? 30;
-        const startDate = new Date().toISOString().split('T')[0];
-        db.startCustomMonth(startDate, duration);
-        await interaction.editReply(`✅ تم بدء شهر مخصص جديد.\n📅 من **${startDate}** لمدة **${duration}** يوم.`);
+        const input = interaction.options.getString('start_date').trim();
+        const m = input.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+        if (!m) {
+            return interaction.editReply('❌ تنسيق التاريخ غير صحيح. استخدم **DD-MM-YYYY** (مثال: 01-03-2026).');
+        }
+        const [ , dd, mm, yyyy ] = m;
+        const iso = `${yyyy}-${mm}-${dd}`;
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime()) || d.getFullYear().toString() !== yyyy || (d.getMonth() + 1).toString().padStart(2, '0') !== mm || d.getDate().toString().padStart(2, '0') !== dd) {
+            return interaction.editReply('❌ تاريخ غير صالح. تأكد من اليوم والشهر والسنة.');
+        }
+
+        const duration = 28;
+        db.startCustomMonth(iso, duration);
+        await interaction.editReply(
+            `✅ تم بدء Season جديد (28 يوم).\n📅 بداية السيزون: **${input}** (يحفظ كـ ${iso} في النظام).`
+        );
     } catch (e) {
-        console.error('❌ start_month:', e);
+        console.error('❌ start_season:', e);
         await interaction.editReply(ERR).catch(() => {});
     }
 }
 
 // ==========================================
-// 📅 /end_month — إنهاء الشهر المخصص
+// 📅 /end_season — إنهاء الـ Season الحالي
 // ==========================================
-const endMonthData = new SlashCommandBuilder()
-    .setName('end_month')
-    .setDescription('إنهاء الشهر المخصص يدوياً')
+const endSeasonData = new SlashCommandBuilder()
+    .setName('end_season')
+    .setDescription('إنهاء الـ Season الحالي يدوياً')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
 
-async function endMonthExecute(interaction, { db }) {
+async function endSeasonExecute(interaction, { db }) {
     try {
         await interaction.deferReply({ ephemeral: true });
         db.endCustomMonth();
-        await interaction.editReply('✅ تم إغلاق الشهر المخصص.');
+        await interaction.editReply('✅ تم إغلاق الـ Season الحالي.');
     } catch (e) {
-        console.error('❌ end_month:', e);
+        console.error('❌ end_season:', e);
         await interaction.editReply(ERR).catch(() => {});
     }
 }
@@ -109,8 +126,8 @@ async function endMonthExecute(interaction, { db }) {
 const commands = [
     { data: recreateDashboardData, execute: recreateDashboardExecute },
     { data: createThreadData, execute: createThreadExecute },
-    { data: startMonthData, execute: startMonthExecute },
-    { data: endMonthData, execute: endMonthExecute }
+    { data: startSeasonData, execute: startSeasonExecute },
+    { data: endSeasonData, execute: endSeasonExecute }
 ];
 
 module.exports = { commands };

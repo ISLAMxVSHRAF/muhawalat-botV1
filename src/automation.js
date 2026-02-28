@@ -39,7 +39,8 @@ class AutomationSystem {
         this.jobs.push(cron.schedule(CONFIG.SCHEDULES.weekly,   () => this.weeklyLeaderboard(), { timezone: TZ }));
 
         this.jobs.push(cron.schedule('0 9 1 * *',  () => this.monthlyGoalReminder(), { timezone: TZ }));
-        this.jobs.push(cron.schedule('0 9 * * 1',  () => this.weeklyWarningCheck(),  { timezone: TZ }));
+        // تحذيرات التقارير الأسبوعية مرتبطة بأسابيع الـ Season — تُفحَص يومياً
+        this.jobs.push(cron.schedule('0 9 * * *',  () => this.weeklyWarningCheck(),  { timezone: TZ }));
         this.jobs.push(cron.schedule('0 22 * * *', () => this.createDailyPost(),     { timezone: TZ }));
         this.jobs.push(cron.schedule('0 12 * * *', () => this.lockDailyPost(),       { timezone: TZ }));
         this.jobs.push(cron.schedule('0 * * * *',  () => this.lockTasksCron(),       { timezone: TZ }));
@@ -383,18 +384,54 @@ class AutomationSystem {
     async weeklyWarningCheck() {
         console.log('⚠️ Weekly warning check...');
         try {
-            const allUsers = this.db.getAllUsers();
-            const today = new Date();
-            const weekStart = new Date(today);
-            weekStart.setDate(today.getDate() - 7);
-            const startStr = weekStart.toISOString().split('T')[0];
-            const endStr   = today.toISOString().split('T')[0];
+            const season = this.db.getActiveMonth ? this.db.getActiveMonth() : null;
+            if (!season) {
+                console.log('⚠️ Weekly warning check skipped — no active season.');
+                return;
+            }
 
+            const nowCairo = new Date(new Date().toLocaleString('en-US', { timeZone: TZ }));
+            const todayUtc = Date.UTC(nowCairo.getFullYear(), nowCairo.getMonth(), nowCairo.getDate());
+            const seasonStart = new Date(season.start_date);
+            const seasonStartUtc = Date.UTC(seasonStart.getFullYear(), seasonStart.getMonth(), seasonStart.getDate());
+            const diffDays = Math.floor((todayUtc - seasonStartUtc) / (24 * 60 * 60 * 1000));
+            const duration = season.duration_days || 28;
+
+            if (diffDays < 0 || diffDays >= duration) {
+                console.log('⚠️ Weekly warning check skipped — outside season range.');
+                return;
+            }
+
+            const dayNumber = diffDays + 1; // 1-based داخل السيزون
+            if (![7, 14, 21, 28].includes(dayNumber)) {
+                // مش نهاية أسبوع سيزون — لا ترسل تحذيرات اليوم
+                return;
+            }
+
+            // حساب أسبوع السيزون الحالي (بلوك 7 أيام)
+            const weekIndex = Math.floor(diffDays / 7); // 0..3
+            const weekStartDate = new Date(seasonStart);
+            weekStartDate.setDate(weekStartDate.getDate() + weekIndex * 7);
+            const weekEndDate = new Date(weekStartDate);
+            weekEndDate.setDate(weekEndDate.getDate() + 6);
+
+            const toStr = (d) => {
+                const y = d.getFullYear();
+                const m = String(d.getMonth() + 1).padStart(2, '0');
+                const da = String(d.getDate()).padStart(2, '0');
+                return `${y}-${m}-${da}`;
+            };
+
+            const startStr = toStr(weekStartDate);
+            const endStr = toStr(weekEndDate);
+            const todayStr = toStr(nowCairo);
+
+            const allUsers = this.db.getAllUsers();
             for (const user of allUsers) {
                 const count = this.db.getReportCountInRange(user.user_id, startStr, endStr);
                 if (count < 5) {
                     // قبل إصدار إنذار، تحقق من وجود إجازة يدوية لتقارير هذا الأسبوع أو رصيد إجازات للتقارير
-                    const hasManual = this.db.hasManualFreezeForDate(user.user_id, 'reports', endStr);
+                    const hasManual = this.db.hasManualFreezeForDate(user.user_id, 'reports', todayStr);
                     if (hasManual) continue;
 
                     let protectedByFreeze = false;
