@@ -265,6 +265,99 @@ client.on('interactionCreate', async interaction => {
             if (id.startsWith('clb_prev_') || id.startsWith('clb_next_')) return handleChallengeLeaderboardButton(interaction, db);
             if (id.startsWith('dr_')) return handleDailyReportButton(interaction, db);
 
+            if (id.startsWith('harvest_')) {
+                await interaction.deferReply({ ephemeral: true });
+
+                const parts = id.split('_'); // ['harvest', tierKey, weekIndex]
+                const tierKey = parts[1];
+                const buttonWeekIndex = parseInt(parts[2], 10);
+
+                const season = db.getActiveMonth ? db.getActiveMonth() : null;
+                if (!season) {
+                    return interaction.editReply('❌ لا يوجد Season نشط حالياً.');
+                }
+
+                if (Number.isNaN(buttonWeekIndex) || buttonWeekIndex < 0 || buttonWeekIndex > 3) {
+                    return interaction.editReply('❌ رقم الأسبوع غير صالح في رسالة الحصاد هذه.');
+                }
+
+                const seasonStart = new Date(season.start_date);
+
+                const toStr = (d) => {
+                    const y = d.getFullYear();
+                    const m = String(d.getMonth() + 1).padStart(2, '0');
+                    const da = String(d.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${da}`;
+                };
+
+                const weekStartDate = new Date(seasonStart);
+                weekStartDate.setDate(weekStartDate.getDate() + buttonWeekIndex * 7);
+                const weekEndDate = new Date(weekStartDate);
+                weekEndDate.setDate(weekEndDate.getDate() + 6);
+
+                const weekStartStr = toStr(weekStartDate);
+                const weekEndStr = toStr(weekEndDate);
+                const seasonStartStr = toStr(seasonStart);
+
+                const allUsers = db.getAllUsers();
+
+                const tierMeta = {
+                    '7':  { name: '🏆 محاولات مثالية', match: (c) => c >= 7 },
+                    '6':  { name: '🔥 محاولات ممتازة', match: (c) => c === 6 },
+                    '5':  { name: '💪 محاولات جيدة',   match: (c) => c === 5 },
+                    '34': { name: '🚶 محاولات مستمرة', match: (c) => c === 3 || c === 4 },
+                    '12': { name: '🌱 بداية محاولة',   match: (c) => c === 1 || c === 2 },
+                    '0':  { name: '⏳ في انتظار المحاولة', match: (c) => c === 0 },
+                };
+
+                const meta = tierMeta[tierKey] || tierMeta['0'];
+
+                const lines = [];
+                for (const user of allUsers) {
+                    const dailyCount = db.getReportCountInRange(user.user_id, weekStartStr, weekEndStr);
+                    if (!meta.match(dailyCount)) continue;
+
+                    const weeklyDone = db.getCompletedTasksInRange(user.user_id, 'weekly', weekStartStr, weekEndStr) > 0;
+                    const monthlyDone = db.getCompletedTasksInRange(user.user_id, 'monthly', seasonStartStr, weekEndStr) > 0;
+
+                    const weeklyMark = weeklyDone ? '✅' : '❌';
+                    const monthlyMark = monthlyDone ? '✅' : '❌';
+
+                    lines.push(`يومي: ${dailyCount}/7 ┃ أسبوعي: ${weeklyMark} ┃ شهري: ${monthlyMark} ┃ 👤 ${user.name}`);
+                }
+
+                if (!lines.length) {
+                    return interaction.editReply({
+                        embeds: [
+                            new EmbedBuilder()
+                                .setColor(CONFIG.COLORS?.info || 0x3498db)
+                                .setTitle(meta.name)
+                                .setDescription('لا يوجد أعضاء في هذه الفئة لهذا الأسبوع.')
+                        ]
+                    });
+                }
+
+                const chunks = [];
+                let current = '';
+                for (const line of lines) {
+                    if ((current + line + '\n').length > 3900) {
+                        chunks.push(current);
+                        current = '';
+                    }
+                    current += line + '\n';
+                }
+                if (current) chunks.push(current);
+
+                const embeds = chunks.map((desc, idx) =>
+                    new EmbedBuilder()
+                        .setColor(CONFIG.COLORS?.primary || 0x2ecc71)
+                        .setTitle(chunks.length > 1 ? `${meta.name} — صفحة ${idx + 1}` : meta.name)
+                        .setDescription(desc)
+                );
+
+                return interaction.editReply({ embeds });
+            }
+
             // أزرار أقسام الداشبورد
             if (id.startsWith('dash_section_')) {
                 const section     = id.replace('dash_section_', '');

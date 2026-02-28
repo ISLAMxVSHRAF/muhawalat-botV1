@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const cron = require('node-cron');
 const { announceChallengeEnd } = require('./commands/challenges');
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const CONFIG = require('./config');
 const { getRandomQuote } = require('./utils/quotes');
 const {
@@ -41,6 +41,8 @@ class AutomationSystem {
         this.jobs.push(cron.schedule('0 9 1 * *',  () => this.monthlyGoalReminder(), { timezone: TZ }));
         // تحذيرات التقارير الأسبوعية مرتبطة بأسابيع الـ Season — تُفحَص يومياً بعد انتهاء كل أسبوع (اليوم التالي) الساعة 14:00
         this.jobs.push(cron.schedule('0 14 * * *', () => this.weeklyWarningCheck(),  { timezone: TZ }));
+        // الحصاد الأسبوعي (Gamification Harvest) — بعد انتهاء الأسبوع، الساعة 20:00
+        this.jobs.push(cron.schedule('0 20 * * *', () => this.weeklyHarvest(),       { timezone: TZ }));
         this.jobs.push(cron.schedule('0 22 * * *', () => this.createDailyPost(),     { timezone: TZ }));
         this.jobs.push(cron.schedule('0 12 * * *', () => this.lockDailyPost(),       { timezone: TZ }));
         this.jobs.push(cron.schedule('0 * * * *',  () => this.lockTasksCron(),       { timezone: TZ }));
@@ -504,6 +506,175 @@ class AutomationSystem {
             console.log('✅ Warning check done.');
         } catch (e) {
             console.error('❌ Warning check failed:', e.message);
+        }
+    }
+
+    // ==========================================
+    // 🌾 WEEKLY HARVEST (Gamification)
+    // ==========================================
+    // testInteraction != null → وضع الاختبار (يستخدم الأسبوع الحالي ويُرسل في قناة الأمر)
+    async weeklyHarvest(testInteraction = null) {
+        const isTest = !!testInteraction;
+        const replyTest = async (msg) => {
+            if (!isTest) return;
+            try { await testInteraction.editReply(msg); } catch (_) {}
+        };
+
+        try {
+            const season = this.db.getActiveMonth ? this.db.getActiveMonth() : null;
+            if (!season) {
+                console.log('🌾 Weekly harvest skipped — no active season.');
+                await replyTest('❌ لا يوجد Season نشط حالياً.');
+                return;
+            }
+
+            const nowCairo = new Date(new Date().toLocaleString('en-US', { timeZone: TZ }));
+            const todayUtc = Date.UTC(nowCairo.getFullYear(), nowCairo.getMonth(), nowCairo.getDate());
+            const seasonStart = new Date(season.start_date);
+            const seasonStartUtc = Date.UTC(seasonStart.getFullYear(), seasonStart.getMonth(), seasonStart.getDate());
+            const diffDays = Math.floor((todayUtc - seasonStartUtc) / (24 * 60 * 60 * 1000));
+            const duration = season.duration_days || 28;
+
+            if (diffDays < 0 || diffDays >= duration) {
+                console.log('🌾 Weekly harvest skipped — outside season range.');
+                await replyTest('❌ اليوم خارج نطاق الموسم الحالي.');
+                return;
+            }
+
+            let weekIndex;
+            const dayNumber = diffDays + 1; // 1-based داخل السيزون
+
+            if (isTest) {
+                // وضع الاختبار: تقييم الأسبوع الجاري حسب diffDays
+                weekIndex = Math.min(3, Math.max(0, Math.floor(diffDays / 7)));
+            } else {
+                // وضع الإنتاج: تقييم الأسبوع الذي انتهى بالأمس، في الأيام 8 / 15 / 22 / 29
+                if (![8, 15, 22, 29].includes(dayNumber)) {
+                    // ليس اليوم التالي لنهاية أسبوع سيزون — لا ترسل حصاد اليوم
+                    return;
+                }
+                weekIndex = Math.floor((diffDays - 1) / 7); // 0..3
+            }
+
+            const weekStartDate = new Date(seasonStart);
+            weekStartDate.setDate(weekStartDate.getDate() + weekIndex * 7);
+            const weekEndDate = new Date(weekStartDate);
+            weekEndDate.setDate(weekEndDate.getDate() + 6);
+
+            const toStr = (d) => {
+                const y = d.getFullYear();
+                const m = String(d.getMonth() + 1).padStart(2, '0');
+                const da = String(d.getDate()).padStart(2, '0');
+                return `${y}-${m}-${da}`;
+            };
+
+            const weekStartStr = toStr(weekStartDate);
+            const weekEndStr = toStr(weekEndDate);
+            const seasonStartStr = toStr(seasonStart);
+
+            const allUsers = this.db.getAllUsers();
+            if (!allUsers.length) {
+                console.log('🌾 Weekly harvest skipped — no users.');
+                return;
+            }
+
+            const tiers = {
+                7: [],
+                6: [],
+                5: [],
+                '34': [],
+                '12': [],
+                0: []
+            };
+
+            let totalAttempters = 0;
+            for (const user of allUsers) {
+                const count = this.db.getReportCountInRange(user.user_id, weekStartStr, weekEndStr);
+                if (count > 0) totalAttempters++;
+
+                if (count >= 7) tiers[7].push(user);
+                else if (count === 6) tiers[6].push(user);
+                else if (count === 5) tiers[5].push(user);
+                else if (count === 3 || count === 4) tiers['34'].push(user);
+                else if (count === 1 || count === 2) tiers['12'].push(user);
+                else tiers[0].push(user);
+            }
+
+            const totalUsers = allUsers.length;
+
+            const statsChId = process.env.STATS_CHANNEL_ID;
+            if (!statsChId) {
+                console.log('🌾 Weekly harvest skipped — STATS_CHANNEL_ID not set.');
+                return;
+            }
+
+            const statsChannel = await this.client.channels.fetch(statsChId).catch(() => null);
+            if (!statsChannel) {
+                console.log('🌾 Weekly harvest skipped — stats channel not found.');
+                return;
+            }
+
+            const lines = [];
+            lines.push('السر دايماً في الاستمرارية مش المثالية! 🌱 كل علامة (صح) هنا هي خطوة لقدام، وكل يوم وقع منك هو فرصة تعوضها وتبدأ من تاني.\n');
+            lines.push('عاش لكل حد بيحاول، ويلا بينا نشوف إحصائيات محاولاتنا الأسبوع ده بتقول إيه: 👇\n');
+            lines.push('');
+            lines.push(`🏆 محاولات مثالية: ${tiers[7].length} عضو`);
+            lines.push(`🔥 محاولات ممتازة: ${tiers[6].length} عضو`);
+            lines.push(`💪 محاولات جيدة: ${tiers[5].length} عضو`);
+            lines.push(`🚶 محاولات مستمرة: ${tiers['34'].length} عضو`);
+            lines.push(`🌱 بداية محاولة: ${tiers['12'].length} عضو`);
+            lines.push(`⏳ في انتظار المحاولة: ${tiers[0].length} عضو`);
+
+            const desc = lines.join('\n');
+
+            const embed = new EmbedBuilder()
+                .setColor(CONFIG.COLORS?.primary ?? 0x2ecc71)
+                .setTitle('📊 الحصاد الأسبوعي لمجتمع \"محاولات\"')
+                .setDescription(desc)
+                .setFooter({
+                    text: `إجمالي المحاولين الأسبوع ده: ${totalAttempters} من أصل ${totalUsers} عضو 📊 | مستنيينكم الأسبوع الجاي! 💪`
+                });
+
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`harvest_7_${weekIndex}`).setLabel('محاولات مثالية').setEmoji('🏆').setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId(`harvest_6_${weekIndex}`).setLabel('محاولات ممتازة').setEmoji('🔥').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId(`harvest_5_${weekIndex}`).setLabel('محاولات جيدة').setEmoji('💪').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId(`harvest_34_${weekIndex}`).setLabel('محاولات مستمرة').setEmoji('🚶').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId(`harvest_12_${weekIndex}`).setLabel('بداية محاولة').setEmoji('🌱').setStyle(ButtonStyle.Secondary)
+            );
+
+            const row2 = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`harvest_0_${weekIndex}`).setLabel('في انتظار المحاولة').setEmoji('⏳').setStyle(ButtonStyle.Secondary)
+            );
+
+            if (isTest) {
+                const channel = testInteraction.channel;
+                await channel.send({
+                    content: '[🧪 وضع الاختبار] تفاصيل الأسبــــــــــــــــوع في مجتمع محاولات 🫡',
+                    embeds: [embed],
+                    components: [row, row2]
+                });
+                await replyTest('✅ تم الإرسال.');
+            } else {
+                const statsChId = process.env.STATS_CHANNEL_ID;
+                if (!statsChId) {
+                    console.log('🌾 Weekly harvest skipped — STATS_CHANNEL_ID not set.');
+                    return;
+                }
+
+                const statsChannel = await this.client.channels.fetch(statsChId).catch(() => null);
+                if (!statsChannel) {
+                    console.log('🌾 Weekly harvest skipped — stats channel not found.');
+                    return;
+                }
+
+                const content = 'تفاصيل الأسبــــــــــــــــوع في مجتمع محاولات 🫡\n@everyone';
+                await statsChannel.send({ content, embeds: [embed], components: [row, row2] });
+                console.log('🌾 Weekly harvest sent.');
+            }
+        } catch (e) {
+            console.error('❌ weeklyHarvest:', e.message);
+            await replyTest('❌ حدث خطأ أثناء إنشاء الحصاد الأسبوعي.');
         }
     }
 

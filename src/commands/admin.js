@@ -251,13 +251,35 @@ async function unsyncReportsExecute(interaction, { db }) {
     }
 }
 
+// ==========================================
+// 🧪 /test_harvest — اختبار الحصاد الأسبوعي الحالي
+// ==========================================
+const testHarvestData = new SlashCommandBuilder()
+    .setName('test_harvest')
+    .setDescription('اختبار رسالة الحصاد للأسبوع الحالي في القناة الحالية')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
+
+async function testHarvestExecute(interaction, { automation }) {
+    try {
+        await interaction.deferReply({ ephemeral: true });
+        if (!automation || typeof automation.weeklyHarvest !== 'function') {
+            return interaction.editReply('❌ نظام الأتمتة غير جاهز حالياً.');
+        }
+        await automation.weeklyHarvest(interaction);
+    } catch (e) {
+        console.error('❌ test_harvest:', e);
+        await interaction.editReply(ERR).catch(() => {});
+    }
+}
+
 const commands = [
     { data: recreateDashboardData, execute: recreateDashboardExecute },
     { data: createThreadData, execute: createThreadExecute },
     { data: startSeasonData, execute: startSeasonExecute },
     { data: endSeasonData, execute: endSeasonExecute },
     { data: seasonInfoData, execute: seasonInfoExecute },
-    { data: unsyncReportsData, execute: unsyncReportsExecute }
+    { data: unsyncReportsData, execute: unsyncReportsExecute },
+    { data: testHarvestData, execute: testHarvestExecute }
 ];
 
 module.exports = { commands };
