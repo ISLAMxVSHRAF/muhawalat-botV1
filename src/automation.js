@@ -623,12 +623,12 @@ class AutomationSystem {
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`harvest_7_${weekIndex}`).setLabel('محاولات مثالية').setEmoji('🏆').setStyle(ButtonStyle.Primary),
                 new ButtonBuilder().setCustomId(`harvest_6_${weekIndex}`).setLabel('محاولات ممتازة').setEmoji('🔥').setStyle(ButtonStyle.Secondary),
-                new ButtonBuilder().setCustomId(`harvest_5_${weekIndex}`).setLabel('محاولات جيدة').setEmoji('💪').setStyle(ButtonStyle.Secondary),
-                new ButtonBuilder().setCustomId(`harvest_34_${weekIndex}`).setLabel('محاولات مستمرة').setEmoji('🚶').setStyle(ButtonStyle.Secondary),
-                new ButtonBuilder().setCustomId(`harvest_12_${weekIndex}`).setLabel('بداية محاولة').setEmoji('🌱').setStyle(ButtonStyle.Secondary)
+                new ButtonBuilder().setCustomId(`harvest_5_${weekIndex}`).setLabel('محاولات جيدة').setEmoji('💪').setStyle(ButtonStyle.Secondary)
             );
 
             const row2 = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`harvest_34_${weekIndex}`).setLabel('محاولات مستمرة').setEmoji('🚶').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId(`harvest_12_${weekIndex}`).setLabel('بداية محاولة').setEmoji('🌱').setStyle(ButtonStyle.Secondary),
                 new ButtonBuilder().setCustomId(`harvest_0_${weekIndex}`).setLabel('في انتظار المحاولة').setEmoji('⏳').setStyle(ButtonStyle.Secondary)
             );
 
