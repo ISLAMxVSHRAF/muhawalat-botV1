@@ -11,7 +11,7 @@ const { Client, GatewayIntentBits, InteractionType, MessageFlags, EmbedBuilder, 
 const CONFIG = require('./src/config');
 const MuhawalatDatabase        = require('./src/database');
 const AutomationSystem         = require('./src/automation');
-const { startWebServer }       = require('./website/server');  // ← Web Dashboard
+// const { startWebServer }       = require('./website/server');  // ← Web Dashboard
 
 // Handlers
 const { showRegistrationModal, processRegistration }                                            = require('./src/handlers/onboarding');
@@ -81,7 +81,7 @@ client.once('ready', async () => {
     console.log(`✅ Slash commands loaded: ${client.commands.size}`);
 
     client.db = db; // عشان الأزرار تقدر توصل للداتابيز
-    startWebServer(db);
+    // startWebServer(db);
 
     console.log(`✅ Bot: ${client.user.tag}`);
     console.log(`📊 Users: ${db.getAllUsers().length}`);
