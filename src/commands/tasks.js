@@ -16,7 +16,7 @@ const CONFIG = require('../config');
 
 const ERR = CONFIG.ADMIN?.unifiedErrorMessage || '❌ حدث خطأ داخلي.';
 
-const _taskCreateImageCache = new Map();
+const _taskCreateCache = new Map();
 
 const taskCreateData = new SlashCommandBuilder()
     .setName('task_create')
@@ -27,14 +27,23 @@ const taskCreateData = new SlashCommandBuilder()
             { name: 'أسبوعية', value: 'weekly' },
             { name: 'شهرية', value: 'monthly' }
         ).setRequired(true))
+    .addIntegerOption(o => o.setName('duration_hours').setDescription('الوقت بالساعات حتى الإغلاق').setRequired(true))
+    .addIntegerOption(o => o.setName('week_number').setDescription('رقم الأسبوع في الموسم (للمهام الأسبوعية)').setRequired(false))
     .addAttachmentOption(o => o.setName('image').setDescription('صورة مرفقة (اختياري)').setRequired(false));
 
 async function taskCreateExecute(interaction, { db, client }) {
     try {
         const type = interaction.options.getString('type');
+        const duration = interaction.options.getInteger('duration_hours');
+        const week = interaction.options.getInteger('week_number') ?? 1;
         const image = interaction.options.getAttachment('image');
         const key = `${interaction.user.id}_task_create`;
-        if (image) _taskCreateImageCache.set(key, image.url);
+        _taskCreateCache.set(key, {
+            type,
+            duration,
+            week,
+            imageUrl: image ? image.url : null
+        });
         const modal = new ModalBuilder()
             .setCustomId(`modal_task_create_${type}`)
             .setTitle('📌 مهمة جديدة');
@@ -68,14 +77,15 @@ async function processTaskCreateModal(interaction, db, client) {
     if (!id.startsWith('modal_task_create_')) return;
     await interaction.deferReply({ ephemeral: true });
     try {
-        const type = id.replace('modal_task_create_', '');
         const key = `${interaction.user.id}_task_create`;
-        const imageUrl = _taskCreateImageCache.get(key) || null;
-        _taskCreateImageCache.delete(key);
+        const cacheData = _taskCreateCache.get(key);
+        _taskCreateCache.delete(key);
+        if (!cacheData) return interaction.editReply('❌ انتهت الجلسة، يرجى إعادة المحاولة.');
+
         const title = interaction.fields.getTextInputValue('title').trim();
         const description = interaction.fields.getTextInputValue('description').trim();
 
-        const forumId = type === 'weekly'
+        const forumId = cacheData.type === 'weekly'
             ? process.env.WEEKLY_TASKS_FORUM_ID
             : process.env.MONTHLY_TASKS_FORUM_ID;
 
@@ -84,51 +94,34 @@ async function processTaskCreateModal(interaction, db, client) {
         const forum = await interaction.guild.channels.fetch(forumId).catch(() => null);
         if (!forum) return interaction.editReply('❌ القناة غير موجودة');
 
-        const graceHours = type === 'weekly' ? 48 : 120;
-        const now = new Date();
-        const lockAt = new Date(now.getTime() + graceHours * 60 * 60 * 1000);
+        const season = db.getActiveMonth ? db.getActiveMonth() : null;
+        const seasonPrefix = season ? season.start_date : new Date().toISOString().split('T')[0];
+        const period = cacheData.type === 'weekly'
+            ? `${seasonPrefix}_W${cacheData.week}`
+            : `${seasonPrefix}_Monthly`;
 
-        let period;
-        if (type === 'weekly') {
-            const weekNum = Math.ceil(now.getDate() / 7);
-            period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-W${weekNum}`;
-        } else {
-            period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        }
+        const graceHours = cacheData.duration;
+        const lockAt = new Date(Date.now() + graceHours * 60 * 60 * 1000);
 
-        const typeAr = type === 'weekly' ? 'الأسبوعية' : 'الشهرية';
-
-        const content = [
-            `# 📌 المهمة ${typeAr}`,
-            '',
-            `**${title}**`,
-            '',
-            description,
-            '',
-            `⏰ آخر موعد للتسجيل: <t:${Math.floor(lockAt.getTime() / 1000)}:F>`,
-            '',
-            '✅ **عشان تسجل إتمامك، اكتب رسالة فوق 10 كلمات**'
-        ].join('\n');
-
-        const messageOpts = { content };
-        if (imageUrl) messageOpts.files = [imageUrl];
+        const messageOpts = { content: description };
+        if (cacheData.imageUrl) messageOpts.files = [cacheData.imageUrl];
 
         const thread = await forum.threads.create({
-            name: `📌 المهمة ${typeAr} | ${title}`,
+            name: title,
             message: messageOpts
         });
 
         db.createTask(
-            interaction.guild.id, type, title, description,
+            interaction.guild.id, cacheData.type, title, description,
             thread.id, period, graceHours,
             lockAt.toISOString(), interaction.user.id
         );
 
+        const lockTs = Math.floor(lockAt.getTime() / 1000);
         await interaction.editReply(
-            `✅ تم إنشاء المهمة ${typeAr}\n` +
-            `📌 **${title}**\n` +
-            `⏰ تقفل: <t:${Math.floor(lockAt.getTime() / 1000)}:R>\n` +
-            `Thread: <#${thread.id}>`
+            `✅ تم إنشاء المهمة.\n` +
+            `Thread: <#${thread.id}>\n` +
+            `⏰ تقفل: <t:${lockTs}:R>`
         );
     } catch (e) {
         console.error('❌ processTaskCreateModal:', e);
@@ -171,9 +164,60 @@ async function taskListExecute(interaction, { db }) {
     }
 }
 
+// ==========================================
+// /task_link — ربط ثريد موجود بنظام المهام
+// ==========================================
+const taskLinkData = new SlashCommandBuilder()
+    .setName('task_link')
+    .setDescription('ربط ثريد موجود مسبقاً بنظام المهام')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addStringOption(o => o.setName('thread_id').setDescription('معرف الثريد').setRequired(true))
+    .addStringOption(o => o.setName('type').setDescription('نوع المهمة')
+        .addChoices(
+            { name: 'أسبوعية', value: 'weekly' },
+            { name: 'شهرية', value: 'monthly' }
+        ).setRequired(true))
+    .addIntegerOption(o => o.setName('duration_hours').setDescription('الوقت بالساعات حتى الإغلاق').setRequired(true))
+    .addIntegerOption(o => o.setName('week_number').setDescription('رقم الأسبوع في الموسم (للمهام الأسبوعية)').setRequired(false));
+
+async function taskLinkExecute(interaction, { db }) {
+    try {
+        await interaction.deferReply({ ephemeral: true });
+        const threadId = interaction.options.getString('thread_id').trim();
+        const type = interaction.options.getString('type');
+        const durationHours = interaction.options.getInteger('duration_hours');
+        const weekNumber = interaction.options.getInteger('week_number') ?? 1;
+
+        const thread = await interaction.guild.channels.fetch(threadId).catch(() => null);
+        if (!thread) return interaction.editReply('❌ القناة أو الثريد غير موجود.');
+
+        const season = db.getActiveMonth ? db.getActiveMonth() : null;
+        const seasonPrefix = season ? season.start_date : new Date().toISOString().split('T')[0];
+        const period = type === 'weekly'
+            ? `${seasonPrefix}_W${weekNumber}`
+            : `${seasonPrefix}_Monthly`;
+
+        const lockAt = new Date(Date.now() + durationHours * 60 * 60 * 1000);
+
+        db.createTask(
+            interaction.guild.id, type, thread.name, 'Linked existing thread',
+            thread.id, period, durationHours, lockAt.toISOString(), interaction.user.id
+        );
+
+        const lockTs = Math.floor(lockAt.getTime() / 1000);
+        await interaction.editReply(
+            `✅ تم ربط المهمة ( **${thread.name}** ) وسيتم قفلها <t:${lockTs}:R>\n<#${thread.id}>`
+        );
+    } catch (e) {
+        console.error('❌ task_link:', e);
+        await interaction.editReply(ERR).catch(() => {});
+    }
+}
+
 const commands = [
     { data: taskCreateData, execute: taskCreateExecute },
     { data: taskListData, execute: taskListExecute },
+    { data: taskLinkData, execute: taskLinkExecute },
 ];
 
 module.exports = { commands, processTaskCreateModal };
