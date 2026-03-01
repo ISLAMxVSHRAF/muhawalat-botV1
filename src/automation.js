@@ -38,7 +38,6 @@ class AutomationSystem {
         this.jobs.push(cron.schedule(CONFIG.SCHEDULES.reset,    () => this.dailyReset(),        { timezone: TZ }));
         this.jobs.push(cron.schedule(CONFIG.SCHEDULES.weekly,   () => this.weeklyLeaderboard(), { timezone: TZ }));
 
-        this.jobs.push(cron.schedule('0 9 1 * *',  () => this.monthlyGoalReminder(), { timezone: TZ }));
         // تحذيرات التقارير الأسبوعية مرتبطة بأسابيع الـ Season — تُفحَص يومياً بعد انتهاء كل أسبوع (اليوم التالي) الساعة 14:00
         this.jobs.push(cron.schedule('0 14 * * *', () => this.weeklyWarningCheck(),  { timezone: TZ }));
         // الحصاد الأسبوعي (Gamification Harvest) — بعد انتهاء الأسبوع، الساعة 20:00
