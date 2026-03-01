@@ -103,7 +103,12 @@ async function buildHomeSection(userId, db, guildId = null) {
             // Weekly [X/4] — عدد المهام الأسبوعية المكتملة في الموسم كله
             weeklyCount = db.getCompletedTasksInRange ? db.getCompletedTasksInRange(userId, 'weekly', seasonStartStr, seasonEndStr) : 0;
             weeklyTotal = 4;
-            weeklyStatus = weeklyCount >= weeklyTotal ? '✅' : '❌';
+
+            // Check if task was done this specific week block
+            const currentWeekDone = db.getCompletedTasksInRange ? db.getCompletedTasksInRange(userId, 'weekly', blockStartStr, blockEndStr) : 0;
+
+            // Show ✅ if they did it this week, OR if their total matches the current week progress
+            weeklyStatus = (currentWeekDone > 0 || weeklyCount >= (weekIndex + 1)) ? '✅' : '❌';
 
             // Monthly [X/1] — عدد المهام الشهرية (الموسمية) في الموسم كله
             monthlyCount = db.getCompletedTasksInRange ? db.getCompletedTasksInRange(userId, 'monthly', seasonStartStr, seasonEndStr) : 0;
