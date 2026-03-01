@@ -1966,7 +1966,7 @@ class MuhawalatDatabase {
             `, [u.user_id, today, total, completed, rate]);
 
             if (total > 0) {
-                if (completed === total) {
+                if (rate >= 50) {
                     const newStreak = (u.days_streak || 0) + 1;
                     this.db.run('UPDATE stats SET days_streak=? WHERE user_id=?', [newStreak, u.user_id]);
 
