@@ -48,6 +48,10 @@ class AutomationSystem {
         this.jobs.push(cron.schedule('0 23 * * *', () => this.checkExpiredChallenges(), { timezone: TZ }));
         this.jobs.push(cron.schedule('0 0 * * *', () => this.customMonthWarning(), { timezone: TZ }));
 
+        // Smart Reminders
+        this.setupDailyReminderCron();
+        this.setupTaskReminderCron();
+
         this.loadScheduledMessages();
         console.log('✅ Automation started\n');
     }
@@ -96,6 +100,7 @@ class AutomationSystem {
                 }
 
                 await thread.send(`<@${user.user_id}> ${message}`);
+                await new Promise(r => setTimeout(r, 300));
 
                 const now = new Date();
                 const isMonday = now.getDay() === 1;
@@ -246,7 +251,7 @@ class AutomationSystem {
                         await thread.send(
                             `⏰ <@${user.user_id}> **انتهى وقت المهمة ${typeAr}:** "${t.title}"\nلم يتم تسجيل إتمامك لها. 📌`
                         ).catch(() => {});
-                        await this.sleep(300);
+                        await new Promise(r => setTimeout(r, 300));
                     }
                 }
             } catch (e) {
@@ -288,7 +293,7 @@ class AutomationSystem {
                 }
 
                 await thread.send(content);
-                await this.sleep(600);
+                await new Promise(r => setTimeout(r, 300));
 
             } catch (e) {
                 console.error(`❌ Evening (${user.name}):`, e.message);
@@ -315,7 +320,7 @@ class AutomationSystem {
                                 ? `❄️ <@${user.user_id}> استخدمنا رصيد الإجازة بتاعك النهاردة لحماية ستريكك! 🔥\n\nرصيد الإجازة المتبقي: **0** — حافظي على التزامك عشان تجددي رصيدك الشهر الجاي 💪`
                                 : `❄️ <@${user.user_id}> استخدمنا رصيد الإجازة بتاعك النهاردة لحماية ستريكك! 🔥\n\nرصيد الإجازة المتبقي: **0** — حافظ على التزامك عشان تجدد رصيدك الشهر الجاي 💪`;
                             await thread.send(msg);
-                            await this.sleep(500);
+                            await new Promise(r => setTimeout(r, 300));
                         }
                     } catch (_) {}
                 }
@@ -358,6 +363,7 @@ class AutomationSystem {
                         await thread.send(
                             `✅ <@${user.user_id}> تم رفع إنذار عنك تلقائياً!\nأثبت التزامك على مدار أسبوعين متتاليين 💪`
                         );
+                        await new Promise(r => setTimeout(r, 300));
                     }
                 } catch (_) {}
             }
@@ -401,7 +407,7 @@ class AutomationSystem {
                 }
 
                 await thread.send({ content, components: [row] });
-                await this.sleep(600);
+                await new Promise(r => setTimeout(r, 300));
             } catch (e) {
                 console.error(`❌ Monthly reminder (${user.name}):`, e.message);
             }
@@ -497,7 +503,7 @@ class AutomationSystem {
                         null,
                         { db: this.db, client: this.client }
                     );
-                    await this.sleep(500);
+                    await new Promise(r => setTimeout(r, 300));
                 }
             }
 
@@ -931,6 +937,112 @@ class AutomationSystem {
         } catch (e) {
             console.error('❌ checkExpiredChallenges:', e.message);
         }
+    }
+
+    // ==========================================
+    // ⏰ SMART REMINDERS
+    // ==========================================
+
+    setupDailyReminderCron() {
+        // Daily reminder at 10:00 AM (2 hours before 12:00 PM daily report closing)
+        this.jobs.push(cron.schedule('0 10 * * *', async () => {
+            console.log(`⏰ [${new Date().toLocaleTimeString('ar-EG')}] Daily reminder check...`);
+            try {
+                const yesterdayStr = new Date(Date.now() - 24 * 60 * 60 * 1000).toLocaleDateString('en-CA', { timeZone: TZ });
+                const allUsers = this.db.getAllUsers();
+                const yesterdayReports = this.db.getDailyReports(yesterdayStr);
+                const reportedUserIds = new Set(yesterdayReports.map(r => r.user_id));
+                
+                const pendingUsers = allUsers.filter(user => !reportedUserIds.has(user.user_id));
+                const noThreadUsers = [];
+
+                for (const user of pendingUsers) {
+                    if (user.thread_id) {
+                        try {
+                            const thread = await this.client.channels.fetch(user.thread_id).catch(() => null);
+                            if (thread) {
+                                await thread.send(
+                                    `⏳ **تذكير ودي:** تقرير امبارح هيقفل الساعة 12 الظهر (فاضل ساعتين)! متنساش تكتب تقريرك في مساحتك عشان تحافظ على الاستمرارية 🌱`
+                                );
+                                await new Promise(r => setTimeout(r, 300));
+                            } else {
+                                noThreadUsers.push(user.user_id);
+                            }
+                        } catch (e) {
+                            console.error(`❌ Daily reminder for ${user.name}:`, e.message);
+                            noThreadUsers.push(user.user_id);
+                        }
+                    } else {
+                        noThreadUsers.push(user.user_id);
+                    }
+                }
+
+                // Send bulk reminder for users without threads
+                if (noThreadUsers.length > 0) {
+                    const mentions = noThreadUsers.map(id => '<@' + id + '>').join(' ');
+                    const generalChannelId = process.env.GENERAL_CHANNEL_ID || process.env.NOTIFY_CORNER_ID;
+                    const generalChannel = await this.client.channels.fetch(generalChannelId).catch(() => null);
+                    
+                    if (generalChannel) {
+                        await generalChannel.send(
+                            `⏳ **تذكير هام:** تقرير امبارح هيقفل الساعة 12 الظهر (فاضل ساعتين)!\n` +
+                            `أنتوا لسه معملتوش التقرير، ومفيش مساحة خاصة مسجلة نبعتلكم فيها التذكير:\n${mentions}`
+                        );
+                    }
+                }
+
+                console.log(`✅ Daily reminders sent to ${pendingUsers.length - noThreadUsers.length} users with threads, ${noThreadUsers.length} users without threads.`);
+            } catch (e) {
+                console.error('❌ Daily reminder cron failed:', e.message);
+            }
+        }, { timezone: TZ }));
+    }
+
+    setupTaskReminderCron() {
+        // Hourly check for tasks expiring in 2-3.5 hours
+        this.jobs.push(cron.schedule('0 * * * *', async () => {
+            console.log(`⏰ [${new Date().toLocaleTimeString('ar-EG')}] Task reminder check...`);
+            try {
+                const now = Date.now();
+                const twoHoursFromNow = now + (2 * 60 * 60 * 1000);
+                const threeAndHalfHoursFromNow = now + (3.5 * 60 * 60 * 1000);
+                
+                const activeTasks = this.db.getAllActiveTasks().filter(task => {
+                    const lockAt = new Date(task.lock_at).getTime();
+                    return lockAt >= twoHoursFromNow && lockAt <= threeAndHalfHoursFromNow;
+                });
+
+                for (const task of activeTasks) {
+                    try {
+                        const completions = this.db.getTaskCompletions(task.id);
+                        const completedUserIds = new Set(completions.map(c => c.user_id));
+                        const allUsers = this.db.getAllUsers();
+                        const usersToRemind = allUsers.filter(user => 
+                            user.thread_id && !completedUserIds.has(user.user_id)
+                        );
+
+                        for (const user of usersToRemind) {
+                            try {
+                                const thread = await this.client.channels.fetch(user.thread_id).catch(() => null);
+                                if (thread) {
+                                    await thread.send(
+                                        `⏰ **تذكير مهمة:** مهمة "${task.title}" هتقفل كمان حوالي 3 ساعات! لو خلصتها، متنساش تسجل إتمامك ليها. 💪`
+                                    );
+                                    await new Promise(r => setTimeout(r, 300));
+                                }
+                            } catch (e) {
+                                console.error(`❌ Task reminder for ${user.name}:`, e.message);
+                            }
+                        }
+                    } catch (e) {
+                        console.error(`❌ Task reminder processing for task ${task.id}:`, e.message);
+                    }
+                }
+                console.log(`✅ Task reminders processed for ${activeTasks.length} tasks.`);
+            } catch (e) {
+                console.error('❌ Task reminder cron failed:', e.message);
+            }
+        }, { timezone: TZ }));
     }
 
     sleep(ms) { return new Promise(r => setTimeout(r, ms)); }

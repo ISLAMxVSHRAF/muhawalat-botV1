@@ -105,10 +105,16 @@ const data = new SlashCommandBuilder()
                             )
                             .setRequired(true)
                     )
-                    .addIntegerOption(o =>
+                    .addStringOption(o =>
                         o
-                            .setName('duration_hours')
-                            .setDescription('الوقت بالساعات حتى الإغلاق')
+                            .setName('end_date')
+                            .setDescription('تاريخ الانتهاء (مثال: 04-03-2026)')
+                            .setRequired(true)
+                    )
+                    .addStringOption(o =>
+                        o
+                            .setName('end_time')
+                            .setDescription('ساعة الانتهاء بنظام 24 (مثال: 22:00)')
                             .setRequired(true)
                     )
                     .addIntegerOption(o =>
@@ -146,10 +152,16 @@ const data = new SlashCommandBuilder()
                             )
                             .setRequired(true)
                     )
-                    .addIntegerOption(o =>
+                    .addStringOption(o =>
                         o
-                            .setName('duration_hours')
-                            .setDescription('الوقت بالساعات حتى الإغلاق')
+                            .setName('end_date')
+                            .setDescription('تاريخ الانتهاء (مثال: 04-03-2026)')
+                            .setRequired(true)
+                    )
+                    .addStringOption(o =>
+                        o
+                            .setName('end_time')
+                            .setDescription('ساعة الانتهاء بنظام 24 (مثال: 22:00)')
                             .setRequired(true)
                     )
                     .addIntegerOption(o =>
@@ -165,6 +177,29 @@ const data = new SlashCommandBuilder()
                 sub
                     .setName('task_list')
                     .setDescription('عرض المهام النشطة الحالية')
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('task_edit_deadline')
+                    .setDescription('تعديل موعد انتهاء مهمة نشطة')
+                    .addIntegerOption(o =>
+                        o
+                            .setName('task_id')
+                            .setDescription('معرف المهمة')
+                            .setRequired(true)
+                    )
+                    .addStringOption(o =>
+                        o
+                            .setName('end_date')
+                            .setDescription('تاريخ الانتهاء (مثال: 04-03-2026)')
+                            .setRequired(true)
+                    )
+                    .addStringOption(o =>
+                        o
+                            .setName('end_time')
+                            .setDescription('ساعة الانتهاء بنظام 24 (مثال: 22:00)')
+                            .setRequired(true)
+                    )
             )
             .addSubcommand(sub =>
                 sub

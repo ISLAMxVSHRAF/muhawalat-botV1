@@ -132,6 +132,14 @@ client.on('messageCreate', async message => {
             }
         }
 
+        // Loose Anti-Spam Filter: Check for unique words to prevent "تم تم تم..." spam
+        const uniqueWords = new Set(words).size;
+        // If it has 15 words but less than 8 unique words, it's likely spam (e.g., "تم تم تم...")
+        if (words.length >= 15 && uniqueWords < 8) {
+            return message.reply({ content: '⚠️ تقريرك فيه كلمات مكررة كتير جداً! حاول تكتب تفاصيل حقيقية عن يومك عشان تستفيد من النظام وتشاركنا بجد. عدل التقرير أو اكتب واحد جديد.' })
+                .then(m => setTimeout(() => m.delete().catch(() => {}), 10000));
+        }
+
         if (words.length >= 15) {
             // سجّل أو حدّث العضو
             if (!db.getUser(message.author.id)) {

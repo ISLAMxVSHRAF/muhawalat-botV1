@@ -16,6 +16,22 @@ const CONFIG = require('../config');
 
 const ERR = CONFIG.ADMIN?.unifiedErrorMessage || '❌ حدث خطأ داخلي.';
 
+function parseDateTime(dateStr, timeStr) {
+    const dateMatch = dateStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    const timeMatch = timeStr.match(/^(\d{1,2}):(\d{2})$/);
+    
+    if (!dateMatch || !timeMatch) return null;
+    
+    const day = parseInt(dateMatch[1], 10);
+    const month = parseInt(dateMatch[2], 10) - 1;
+    const year = parseInt(dateMatch[3], 10);
+    const hour = parseInt(timeMatch[1], 10);
+    const minute = parseInt(timeMatch[2], 10);
+    
+    const d = new Date(year, month, day, hour, minute);
+    return isNaN(d.getTime()) ? null : d;
+}
+
 const _taskCreateCache = new Map();
 
 const taskCreateData = new SlashCommandBuilder()
@@ -34,13 +50,15 @@ const taskCreateData = new SlashCommandBuilder()
 async function taskCreateExecute(interaction, { db, client }) {
     try {
         const type = interaction.options.getString('type');
-        const duration = interaction.options.getInteger('duration_hours');
+        const endDate = interaction.options.getString('end_date');
+        const endTime = interaction.options.getString('end_time');
         const week = interaction.options.getInteger('week_number') ?? 1;
         const image = interaction.options.getAttachment('image');
         const key = `${interaction.user.id}_task_create`;
         _taskCreateCache.set(key, {
             type,
-            duration,
+            endDate,
+            endTime,
             week,
             imageUrl: image ? image.url : null
         });
@@ -85,6 +103,12 @@ async function processTaskCreateModal(interaction, db, client) {
         const title = interaction.fields.getTextInputValue('title').trim();
         const description = interaction.fields.getTextInputValue('description').trim();
 
+        // Parse end date and time
+        const lockAt = parseDateTime(cacheData.endDate, cacheData.endTime);
+        if (!lockAt) {
+            return interaction.editReply('❌ صيغة التاريخ أو الوقت غير صحيحة. استخدم: DD-MM-YYYY و HH:mm');
+        }
+
         const forumId = cacheData.type === 'weekly'
             ? process.env.WEEKLY_TASKS_FORUM_ID
             : process.env.MONTHLY_TASKS_FORUM_ID;
@@ -100,8 +124,7 @@ async function processTaskCreateModal(interaction, db, client) {
             ? `${seasonPrefix}_W${cacheData.week}`
             : `${seasonPrefix}_Monthly`;
 
-        const graceHours = cacheData.duration;
-        const lockAt = new Date(Date.now() + graceHours * 60 * 60 * 1000);
+        const graceHours = Math.max(1, Math.round((lockAt.getTime() - Date.now()) / 3600000));
 
         const messageOpts = { content: description };
         if (cacheData.imageUrl) messageOpts.files = [cacheData.imageUrl];
@@ -185,8 +208,15 @@ async function taskLinkExecute(interaction, { db }) {
         await interaction.deferReply({ ephemeral: true });
         const threadId = interaction.options.getString('thread_id').trim();
         const type = interaction.options.getString('type');
-        const durationHours = interaction.options.getInteger('duration_hours');
+        const endDate = interaction.options.getString('end_date');
+        const endTime = interaction.options.getString('end_time');
         const weekNumber = interaction.options.getInteger('week_number') ?? 1;
+
+        // Parse end date and time
+        const lockAt = parseDateTime(endDate, endTime);
+        if (!lockAt) {
+            return interaction.editReply('❌ صيغة التاريخ أو الوقت غير صحيحة. استخدم: DD-MM-YYYY و HH:mm');
+        }
 
         const thread = await interaction.guild.channels.fetch(threadId).catch(() => null);
         if (!thread) return interaction.editReply('❌ القناة أو الثريد غير موجود.');
@@ -197,11 +227,11 @@ async function taskLinkExecute(interaction, { db }) {
             ? `${seasonPrefix}_W${weekNumber}`
             : `${seasonPrefix}_Monthly`;
 
-        const lockAt = new Date(Date.now() + durationHours * 60 * 60 * 1000);
+        const graceHours = Math.max(1, Math.round((lockAt.getTime() - Date.now()) / 3600000));
 
         db.createTask(
             interaction.guild.id, type, thread.name, 'Linked existing thread',
-            thread.id, period, durationHours, lockAt.toISOString(), interaction.user.id
+            thread.id, period, graceHours, lockAt.toISOString(), interaction.user.id
         );
 
         const lockTs = Math.floor(lockAt.getTime() / 1000);
@@ -390,6 +420,36 @@ async function syncTasksExecute(interaction, { db, client }) {
     }
 }
 
+async function taskEditDeadlineExecute(interaction, { db }) {
+    await interaction.deferReply({ ephemeral: true });
+    try {
+        const taskId = interaction.options.getInteger('task_id');
+        const endDate = interaction.options.getString('end_date');
+        const endTime = interaction.options.getString('end_time');
+
+        // Parse end date and time
+        const lockAt = parseDateTime(endDate, endTime);
+        if (!lockAt) {
+            return interaction.editReply('❌ صيغة التاريخ أو الوقت غير صحيحة. استخدم: DD-MM-YYYY و HH:mm');
+        }
+
+        // Check if task exists (optional but good practice)
+        const existingTask = db.getTaskById(taskId);
+        if (!existingTask) {
+            return interaction.editReply('❌ المهمة المحددة غير موجودة.');
+        }
+
+        // Update the task deadline
+        db.updateTask(taskId, { lock_at: lockAt.toISOString() });
+
+        const lockTs = Math.floor(lockAt.getTime() / 1000);
+        await interaction.editReply('✅ تم تعديل موعد انتهاء المهمة بنجاح، ستقفل <t:' + lockTs + ':R>');
+    } catch (e) {
+        console.error('❌ task_edit_deadline:', e);
+        await interaction.editReply(ERR).catch(() => {});
+    }
+}
+
 // ==========================================
 // Central handler for /admin tasks group
 // ==========================================
@@ -403,6 +463,8 @@ async function handleTasks(interaction, deps) {
             return taskListExecute(interaction, deps);
         case 'task_link':
             return taskLinkExecute(interaction, deps);
+        case 'task_edit_deadline':
+            return taskEditDeadlineExecute(interaction, deps);
         case 'sync_tasks':
             return syncTasksExecute(interaction, deps);
         default:

@@ -596,7 +596,7 @@ async function executeRadarRouting(interaction, { db, client }) {
                 failed++;
             }
 
-            await new Promise(res => setTimeout(res, 250));
+            await new Promise(res => setTimeout(res, 300));
         }
 
         await interaction.editReply(
