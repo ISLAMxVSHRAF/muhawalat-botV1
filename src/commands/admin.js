@@ -205,8 +205,30 @@ const data = new SlashCommandBuilder()
             .addSubcommand(sub =>
                 sub
                     .setName('challenge_create')
-                    .setDescription(
-                        'إنشاء تحدي جديد (عنوان ووصف فقط — استخدم sync_challenge لربط المدة والنقاط)'
+                    .setDescription('إنشاء تحدي جديد (الإعداد الكامل من خطوة واحدة)')
+                    .addIntegerOption(o =>
+                        o
+                            .setName('duration_days')
+                            .setDescription('مدة التحدي بالأيام')
+                            .setRequired(true)
+                    )
+                    .addIntegerOption(o =>
+                        o
+                            .setName('max_minutes')
+                            .setDescription('الحد الأقصى للدقائق (وقت التحدي الأساسي)')
+                            .setRequired(true)
+                    )
+                    .addIntegerOption(o =>
+                        o
+                            .setName('min_minutes')
+                            .setDescription('الحد الأدنى المقبول للدقائق (اختياري)')
+                            .setRequired(false)
+                    )
+                    .addIntegerOption(o =>
+                        o
+                            .setName('bonus_minutes')
+                            .setDescription('دقائق البونص المسموح بها فوق الحد الأقصى (اختياري)')
+                            .setRequired(false)
                     )
                     .addAttachmentOption(o =>
                         o
@@ -284,7 +306,7 @@ const data = new SlashCommandBuilder()
     .addSubcommandGroup(group =>
         group
             .setName('users')
-            .setDescription('إنذارات الأعضاء والـ Timeout')
+            .setDescription('إنذارات الأعضاء والـ Timeout والرادار')
             .addSubcommand(sub =>
                 sub
                     .setName('warn')
@@ -350,6 +372,17 @@ const data = new SlashCommandBuilder()
                 sub
                     .setName('timeout_list')
                     .setDescription('قائمة الـ Timeouts المعلقة')
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('radar')
+                    .setDescription('تحليل نشاط الأعضاء خلال فترة محددة')
+                    .addIntegerOption(o =>
+                        o
+                            .setName('days')
+                            .setDescription('عدد الأيام للتحليل، الافتراضي 7')
+                            .setRequired(false)
+                    )
             )
     )
 

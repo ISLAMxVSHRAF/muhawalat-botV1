@@ -33,6 +33,11 @@ const {
 const { handleAutoResponse, processScheduleAddModal, processAutorespondAddModal } = require('./src/commands/automation_cmds');
 const { handleDailyReportButton } = require('./src/commands/reports');
 const { processTaskCreateModal } = require('./src/commands/tasks');
+const {
+    handleRadarNudgeButton,
+    processRadarNudgeModal,
+    executeRadarRouting
+} = require('./src/commands/users');
 
 // ==========================================
 // CLIENT
@@ -265,6 +270,7 @@ client.on('interactionCreate', async interaction => {
             const id = interaction.customId;
             if (id.startsWith('clb_prev_') || id.startsWith('clb_next_')) return handleChallengeLeaderboardButton(interaction, db);
             if (id.startsWith('dr_')) return handleDailyReportButton(interaction, db);
+            if (id.startsWith('btn_radar_nudge_')) return handleRadarNudgeButton(interaction);
 
             if (id.startsWith('harvest_')) {
                 await interaction.deferReply({ ephemeral: true });
@@ -598,6 +604,9 @@ client.on('interactionCreate', async interaction => {
                 const duration = parseInt(interaction.values[0]); // بالدقائق
                 return executeTimeout(interaction, userId, duration, db);
             }
+            if (interaction.customId.startsWith('btn_radar_send_')) {
+                return executeRadarRouting(interaction, { db, client });
+            }
         }
         else if (interaction.type === InteractionType.ModalSubmit) {
             const id = interaction.customId;
@@ -624,6 +633,7 @@ client.on('interactionCreate', async interaction => {
             if (id.startsWith('modal_task_create_')) return processTaskCreateModal(interaction, db, client);
             if (id === 'modal_challenge_create') return processChallengeCreateModal(interaction, db, client);
             if (id === 'modal_sync_challenge') return processSyncChallengeModal(interaction, db, client);
+            if (id.startsWith('modal_radar_')) return processRadarNudgeModal(interaction);
             if (id === 'modal_journal') return processJournalModal(interaction, db);
             if (id.startsWith('modal_schedule_add_')) return processScheduleAddModal(interaction, { automation });
             if (id.startsWith('modal_autorespond_add_')) return processAutorespondAddModal(interaction, { db });

@@ -8,8 +8,11 @@ const CONFIG = require('../config');
 
 const ERR = CONFIG.ADMIN?.unifiedErrorMessage || '❌ حدث خطأ داخلي.';
 
-// Cache for sync_challenge modal flow (moved from sync_challenge.js)
+// Cache for sync_challenge modal flow (مستخدم أيضاً في إنشاء التحدي الجديد)
 const _syncChallengeThreadCache = new Map();
+
+// Cache for challenge_create config (options + image)
+const _challengeCreateCache = new Map();
 
 // ==========================================
 // 📊 بناء الشارت (الأعمدة الثلاثة)
@@ -146,19 +149,23 @@ function getLeaderboardRow(page, total, challengeId) {
 // ==========================================
 // 🏆 /challenge_create — Modal (Title, Description) ثم نشر كنص عادي
 // ==========================================
-const challengeCreateData = new SlashCommandBuilder()
-    .setName('challenge_create')
-    .setDescription('إنشاء تحدي جديد (عنوان ووصف فقط — استخدم /sync_challenge لربط المدة والنقاط)')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addAttachmentOption(o => o.setName('image').setDescription('صورة (اختياري)').setRequired(false));
-
-const _challengeCreateImageCache = new Map();
-
 async function challengeCreateExecute(interaction, { db, client }) {
     try {
-        const image = interaction.options.getAttachment('image');
         const key = `${interaction.user.id}_challenge_create`;
-        if (image) _challengeCreateImageCache.set(key, image.url);
+        const image = interaction.options.getAttachment('image');
+        const durationDays = interaction.options.getInteger('duration_days');
+        const maxMinutes = interaction.options.getInteger('max_minutes');
+        const minMinutes = interaction.options.getInteger('min_minutes') ?? 0;
+        const bonusMinutes =
+            interaction.options.getInteger('bonus_minutes') ?? 0;
+
+        _challengeCreateCache.set(key, {
+            durationDays,
+            maxMinutes,
+            minMinutes,
+            bonusMinutes,
+            imageUrl: image ? image.url : null
+        });
 
         const modal = new ModalBuilder()
             .setCustomId('modal_challenge_create')
@@ -328,8 +335,17 @@ async function processChallengeCreateModal(interaction, db, client) {
     await interaction.deferReply({ ephemeral: true });
     try {
         const key = `${interaction.user.id}_challenge_create`;
-        const imageUrl = _challengeCreateImageCache.get(key) || null;
-        _challengeCreateImageCache.delete(key);
+        const cached = _challengeCreateCache.get(key);
+        _challengeCreateCache.delete(key);
+
+        if (!cached) {
+            return interaction.editReply(
+                '❌ انتهت الجلسة. يرجى إعادة تنفيذ أمر إنشاء التحدي.'
+            );
+        }
+
+        const { durationDays, maxMinutes, minMinutes, bonusMinutes, imageUrl } =
+            cached;
 
         const forumId = process.env.CHALLENGES_FORUM_ID;
         if (!forumId) return interaction.editReply('❌ CHALLENGES_FORUM_ID مش موجود في .env');
@@ -337,19 +353,63 @@ async function processChallengeCreateModal(interaction, db, client) {
         const forumChannel = await client.channels.fetch(forumId).catch(() => null);
         if (!forumChannel) return interaction.editReply('❌ مش قادر أجيب قناة التحديات.');
 
-        const title   = interaction.fields.getTextInputValue('title').trim();
-        const content = interaction.fields.getTextInputValue('content').trim();
+        const title = interaction.fields.getTextInputValue('title').trim();
+        const content = interaction.fields
+            .getTextInputValue('content')
+            .trim();
 
         const messageOpts = { content };
         if (imageUrl) messageOpts.files = [imageUrl];
 
+        // إنشاء ثريد التحدي بالعنوان كما هو (بدون إيموجي ثابت)
         const thread = await forumChannel.threads.create({
-            name: `🏆 ${title}`,
+            name: title,
             message: messageOpts
         });
 
+        // رسالة الليدربورد الأولية
+        const chartMsg = await thread
+            .send('📊 **ليدربورد التحدي**\n_لم يسجل أحد بعد_')
+            .catch(() => null);
+        const chartMessageId = chartMsg?.id || null;
+
+        // تواريخ البداية والنهاية
+        const startDate = new Date();
+        const endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + durationDays);
+
+        const toISO = d => d.toISOString().split('T')[0];
+        const startStr = toISO(startDate);
+        const endStr = toISO(endDate);
+
+        // حفظ التحدي في قاعدة البيانات مباشرة
+        const challengeId = db.createChallenge({
+            title,
+            description: content || null,
+            image_url: imageUrl || null,
+            keyword: null,
+            forum_thread_id: thread.id,
+            chart_message_id: chartMessageId,
+            start_date: startStr,
+            end_date: endStr,
+            created_by: interaction.user.id,
+            min_minutes: minMinutes || 0,
+            max_minutes: maxMinutes,
+            challenge_time: maxMinutes,
+            bonus_minutes: bonusMinutes || 0
+        });
+
+        if (!challengeId) {
+            return interaction.editReply('❌ فشل حفظ التحدي في قاعدة البيانات.');
+        }
+
         await interaction.editReply(
-            `✅ **تم إنشاء بوست التحدي**\n\n📌 **${title}**\n\nاستخدم \`/sync_challenge\` مع معرف الثريد لربط المدة والنقاط.\nThread: <#${thread.id}>`
+            `✅ **تم إنشاء التحدي وحفظه في النظام** (ID: \`${challengeId}\`)\n\n` +
+                `📌 **${title}**\n` +
+                `📅 المدة: ${durationDays} يوم\n` +
+                `⏱️ الحد الأقصى: ${maxMinutes} دقيقة · الأدنى: ${minMinutes ||
+                    0} · البونص: ${bonusMinutes || 0} دقيقة\n` +
+                `Thread: <#${thread.id}>`
         );
     } catch (e) {
         console.error('❌ processChallengeCreateModal:', e);

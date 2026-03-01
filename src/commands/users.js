@@ -1,4 +1,12 @@
-const { EmbedBuilder } = require('discord.js');
+const {
+    EmbedBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle
+} = require('discord.js');
 const CONFIG = require('../config');
 
 const ERR = CONFIG.ADMIN?.unifiedErrorMessage || '❌ حدث خطأ داخلي، تمت كتابة التفاصيل في السجل.';
@@ -303,6 +311,307 @@ async function timeoutListExecute(interaction, { db }) {
 }
 
 // ==========================================
+// Radar V2 — نشاط الأعضاء
+// ==========================================
+
+function buildDateRange(days) {
+    const today = new Date();
+    const end = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate()
+    );
+    const start = new Date(end);
+    start.setDate(start.getDate() - (days - 1));
+
+    const toISO = d => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    };
+
+    return { startStr: toISO(start), endStr: toISO(end) };
+}
+
+function segmentUsersByReports(db, days) {
+    const { startStr, endStr } = buildDateRange(days);
+    const allUsers = db.getAllUsers();
+
+    const complete = [];
+    const partial = [];
+    const zero = [];
+
+    for (const u of allUsers) {
+        const count = db.getReportCountInRange(
+            u.user_id,
+            startStr,
+            endStr
+        );
+        const entry = { ...u, reportCount: count };
+        if (count >= days) complete.push(entry);
+        else if (count > 0) partial.push(entry);
+        else zero.push(entry);
+    }
+
+    return { complete, partial, zero, startStr, endStr };
+}
+
+async function radarExecute(interaction, { db }) {
+    try {
+        await interaction.deferReply({ ephemeral: true });
+        const daysInput = interaction.options.getInteger('days');
+        const days = daysInput && daysInput > 0 ? daysInput : 7;
+
+        const { complete, partial, zero, startStr, endStr } = segmentUsersByReports(
+            db,
+            days
+        );
+
+        const rangeLabel =
+            days === 1
+                ? startStr
+                : `${startStr} → ${endStr}`;
+
+        const formatList = arr =>
+            arr.length
+                ? arr
+                      .slice(0, 30)
+                      .map(u => `<@${u.user_id}>`)
+                      .join(' · ')
+                : '—';
+
+        const formatPartial = arr =>
+            arr.length
+                ? arr
+                      .slice(0, 30)
+                      .map(
+                          u =>
+                              `<@${u.user_id}> (${u.reportCount} تقارير)`
+                      )
+                      .join('\n')
+                : '—';
+
+        const embed = new EmbedBuilder()
+            .setColor(CONFIG.COLORS.primary)
+            .setTitle('📡 رادار النشاط')
+            .setDescription(
+                `تحليل نشاط الأعضاء خلال آخر **${days}** يوم.\n` +
+                    `الفترة: **${rangeLabel}**`
+            )
+            .addFields(
+                {
+                    name: `🟢 مكتمل (${complete.length})`,
+                    value: formatList(complete),
+                    inline: false
+                },
+                {
+                    name: `🟡 متقطع (${partial.length})`,
+                    value: formatPartial(partial),
+                    inline: false
+                },
+                {
+                    name: `🔴 غير متفاعل (${zero.length})`,
+                    value: formatList(zero),
+                    inline: false
+                }
+            );
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`btn_radar_nudge_zero_${days}`)
+                .setLabel('🔔 تنبيه (غير متفاعل)')
+                .setStyle(ButtonStyle.Danger),
+            new ButtonBuilder()
+                .setCustomId(`btn_radar_nudge_partial_${days}`)
+                .setLabel('🔔 تنبيه (المتقطع)')
+                .setStyle(ButtonStyle.Primary)
+        );
+
+        await interaction.editReply({
+            embeds: [embed],
+            components: [row]
+        });
+    } catch (e) {
+        console.error('❌ radar:', e);
+        await interaction.editReply(ERR).catch(() => {});
+    }
+}
+
+// Cache for Radar V2 nudges
+const _radarNudgeCache = new Map();
+
+async function handleRadarNudgeButton(interaction) {
+    try {
+        const parts = interaction.customId.split('_'); // ['btn','radar','nudge',type,days]
+        const type = parts[3]; // zero | partial
+        const days = parseInt(parts[4], 10) || 7;
+
+        const modal = new ModalBuilder()
+            .setCustomId(`modal_radar_${type}_${days}`)
+            .setTitle('رسالة التنبيه - رادار النشاط');
+
+        const defaultText =
+            type === 'zero'
+                ? 'مفتقدينك في التقرير اليومي الفترة اللي فاتت، مستنيين نشوف عودتك قريبًا 🌱'
+                : 'عاش على محاولاتك، محتاجين استمرارية وانتظام أكتر في التقارير الفترة الجاية 💪';
+
+        const input = new TextInputBuilder()
+            .setCustomId('radar_message')
+            .setLabel('نص رسالة التنبيه')
+            .setStyle(TextInputStyle.Paragraph)
+            .setRequired(true)
+            .setValue(defaultText);
+
+        modal.addComponents(new ActionRowBuilder().addComponents(input));
+
+        await interaction.showModal(modal);
+    } catch (e) {
+        console.error('❌ handleRadarNudgeButton:', e);
+    }
+}
+
+async function processRadarNudgeModal(interaction) {
+    await interaction.deferReply({ ephemeral: true });
+    try {
+        const parts = interaction.customId.split('_'); // modal_radar_type_days
+        const type = parts[2];
+        const days = parseInt(parts[3], 10) || 7;
+
+        const message = interaction.fields
+            .getTextInputValue('radar_message')
+            .trim();
+
+        _radarNudgeCache.set(interaction.user.id, {
+            type,
+            days,
+            message
+        });
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`btn_radar_send_dm_${type}_${days}`)
+                .setLabel('📩 DM فقط')
+                .setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder()
+                .setCustomId(`btn_radar_send_thread_${type}_${days}`)
+                .setLabel('💬 في المساحات فقط')
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId(`btn_radar_send_both_${type}_${days}`)
+                .setLabel('📩 + 💬 الاثنين معًا')
+                .setStyle(ButtonStyle.Success)
+        );
+
+        await interaction.editReply({
+            content: 'اختر طريقة الإرسال:',
+            components: [row]
+        });
+    } catch (e) {
+        console.error('❌ processRadarNudgeModal:', e);
+        await interaction.editReply(ERR).catch(() => {});
+    }
+}
+
+async function executeRadarRouting(interaction, { db, client }) {
+    try {
+        await interaction.deferReply({ ephemeral: true });
+
+        const parts = interaction.customId.split('_'); // btn_radar_send_method_type_days
+        const method = parts[3]; // dm | thread | both
+        const type = parts[4]; // zero | partial
+        const days = parseInt(parts[5], 10) || 7;
+
+        const cached = _radarNudgeCache.get(interaction.user.id);
+        if (!cached || cached.type !== type || cached.days !== days) {
+            return interaction.editReply(
+                '❌ لا يوجد رسالة مخزنة لهذه الجلسة. يرجى إعادة تشغيل الرادار واختيار الرسالة.'
+            );
+        }
+
+        const { message } = cached;
+        const { complete, partial, zero } = segmentUsersByReports(db, days);
+
+        const targets =
+            type === 'zero'
+                ? zero
+                : partial;
+
+        if (!targets.length) {
+            return interaction.editReply(
+                'ℹ️ لا يوجد أعضاء مستهدفين لهذه الفئة حاليًا.'
+            );
+        }
+
+        let dmSent = 0;
+        let threadSent = 0;
+        let failed = 0;
+
+        for (const u of targets) {
+            const userId = u.user_id;
+            const userTag = `<@${userId}>`;
+
+            const finalThreadMessage = `${userTag} ${message}`;
+
+            const canDM = method === 'dm' || method === 'both';
+            const canThread = method === 'thread' || method === 'both';
+
+            let dmOk = false;
+            let threadOk = false;
+
+            if (canDM) {
+                try {
+                    const userObj = await client.users
+                        .fetch(userId)
+                        .catch(() => null);
+                    if (userObj) {
+                        await userObj.send(message);
+                        dmOk = true;
+                        dmSent++;
+                    }
+                } catch (_) {
+                    dmOk = false;
+                }
+            }
+
+            if (canThread || (!dmOk && method === 'dm')) {
+                const threadId = u.thread_id;
+                if (threadId) {
+                    try {
+                        const thread = await client.channels
+                            .fetch(threadId)
+                            .catch(() => null);
+                        if (thread) {
+                            await thread.send(finalThreadMessage);
+                            threadOk = true;
+                            threadSent++;
+                        }
+                    } catch (_) {
+                        threadOk = false;
+                    }
+                }
+            }
+
+            if (!dmOk && !threadOk) {
+                failed++;
+            }
+
+            await new Promise(res => setTimeout(res, 250));
+        }
+
+        await interaction.editReply(
+            `✅ تم إرسال تنبيه الرادار لفئة **${type === 'zero' ? 'غير متفاعل' : 'المتقطع'}** خلال آخر ${days} يوم.\n` +
+                `• DM: ${dmSent}\n` +
+                `• Threads: ${threadSent}\n` +
+                `• فشل الإرسال: ${failed}`
+        );
+    } catch (e) {
+        console.error('❌ executeRadarRouting:', e);
+        await interaction.editReply(ERR).catch(() => {});
+    }
+}
+
+// ==========================================
 // Central handler for /admin users group
 // ==========================================
 
@@ -323,6 +632,8 @@ async function handleUsers(interaction, deps) {
             return warningsAutoToggleExecute(interaction, deps);
         case 'timeout_list':
             return timeoutListExecute(interaction, deps);
+        case 'radar':
+            return radarExecute(interaction, deps);
         default:
             throw new Error(`Unknown users subcommand: ${sub}`);
     }
@@ -330,6 +641,9 @@ async function handleUsers(interaction, deps) {
 
 module.exports = {
     handleUsers,
-    issueWarning
+    issueWarning,
+    handleRadarNudgeButton,
+    processRadarNudgeModal,
+    executeRadarRouting
 };
 
