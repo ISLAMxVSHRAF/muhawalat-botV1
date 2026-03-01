@@ -221,7 +221,7 @@ class AutomationSystem {
             }
 
             // 4. Safely Lock and Archive
-            await thread.edit({ locked: true, archived: true }, 'Daily post auto-lock').catch(e => {
+            await thread.edit({ locked: true, archived: false }, 'Daily post auto-lock').catch(e => {
                 console.error(`❌ Discord API Error while locking thread:`, e.message);
             });
 
