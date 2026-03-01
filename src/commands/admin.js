@@ -1,285 +1,622 @@
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { handleReports } = require('./reports');
+const { handleTasks } = require('./tasks');
+const { handleChallenges } = require('./challenges');
+const { handleSeason } = require('./season');
+const { handleUsers } = require('./users');
+const { handleSystem } = require('./system');
+const { handleAutomation } = require('./automation_cmds');
+const { handleTest } = require('./test');
+
 // ==========================================
-// 🔧 ADMIN — Slash Commands
-// إعادة بناء الداشبورد / إنشاء مساحة جديدة
+// /admin — Master Admin Command (Subcommand Groups)
 // ==========================================
 
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
-const { updateDashboard } = require('../utils/dashboard');
-const CONFIG = require('../config');
-
-const ERR = CONFIG.ADMIN?.unifiedErrorMessage || '❌ حدث خطأ داخلي، تمت كتابة التفاصيل في السجل.';
-
-const recreateDashboardData = new SlashCommandBuilder()
-    .setName('recreate_dashboard')
-    .setDescription('إعادة بناء الداشبورد لعضو')
+const data = new SlashCommandBuilder()
+    .setName('admin')
+    .setDescription('لوحة أوامر الأدمن الموحدة')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addUserOption(o => o.setName('user').setDescription('العضو').setRequired(true));
 
-async function recreateDashboardExecute(interaction, { db, client }) {
-    try {
-        await interaction.deferReply({ ephemeral: true });
-        const userOpt = interaction.options.getUser('user');
-        const userId = userOpt.id;
-        const user = db.getUser(userId);
-        if (!user) return interaction.editReply('❌ العضو غير مسجل في النظام.');
-        if (!user.thread_id) return interaction.editReply('❌ العضو ليس لديه مساحة مسجلة. استخدم /create_thread لإنشاء واحدة.');
-        const thread = await client.channels.fetch(user.thread_id).catch(() => null);
-        if (!thread) return interaction.editReply('❌ المساحة المسجلة غير موجودة. استخدم /create_thread لإنشاء مساحة جديدة.');
-        await updateDashboard(thread, userId, db);
-        await interaction.editReply(`✅ **تم إعادة إنشاء الداشبورد لـ** ${userOpt.username}\n\nالمساحة: <#${user.thread_id}>`);
-    } catch (e) {
-        console.error('❌ recreate_dashboard:', e);
-        await interaction.editReply(ERR).catch(() => {});
-    }
-}
+    // Reports group
+    .addSubcommandGroup(group =>
+        group
+            .setName('reports')
+            .setDescription('تقارير يومية ومزامنة')
+            .addSubcommand(sub =>
+                sub
+                    .setName('daily_done')
+                    .setDescription('من عمل تقريره (أو في تاريخ محدد)')
+                    .addStringOption(o =>
+                        o
+                            .setName('date')
+                            .setDescription('التاريخ — مثال: 22/02/2026')
+                            .setRequired(false)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('daily_missing')
+                    .setDescription('من لم يعمل تقريره (أو في تاريخ محدد)')
+                    .addStringOption(o =>
+                        o
+                            .setName('date')
+                            .setDescription('التاريخ — مثال: 22/02/2026')
+                            .setRequired(false)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('sync_reports')
+                    .setDescription('مزامنة التقارير اليومية من Thread')
+                    .addStringOption(o =>
+                        o
+                            .setName('thread_id')
+                            .setDescription('معرف الـ Thread')
+                            .setRequired(true)
+                    )
+                    .addStringOption(o =>
+                        o
+                            .setName('date')
+                            .setDescription(
+                                'التاريخ اللي هيتسجل به — مثال: 22/02/2026'
+                            )
+                            .setRequired(true)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('unsync_reports')
+                    .setDescription(
+                        'حذف جميع التقارير اليومية ليوم معين (لإعادة المزامنة لاحقاً)'
+                    )
+                    .addStringOption(o =>
+                        o
+                            .setName('thread_id')
+                            .setDescription(
+                                'معرف الـ Thread (لمطابقة أمر المزامنة)'
+                            )
+                            .setRequired(true)
+                    )
+                    .addStringOption(o =>
+                        o
+                            .setName('date')
+                            .setDescription('تاريخ اليوم بصيغة DD-MM-YYYY')
+                            .setRequired(true)
+                    )
+            )
+    )
 
-const createThreadData = new SlashCommandBuilder()
-    .setName('create_thread')
-    .setDescription('إنشاء مساحة (Thread) جديدة لعضو')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addUserOption(o => o.setName('user').setDescription('العضو').setRequired(true));
+    // Tasks group
+    .addSubcommandGroup(group =>
+        group
+            .setName('tasks')
+            .setDescription('إدارة المهام ومزامنتها')
+            .addSubcommand(sub =>
+                sub
+                    .setName('task_create')
+                    .setDescription('إنشاء مهمة جديدة (أسبوعية أو شهرية)')
+                    .addStringOption(o =>
+                        o
+                            .setName('type')
+                            .setDescription('نوع المهمة')
+                            .addChoices(
+                                { name: 'أسبوعية', value: 'weekly' },
+                                { name: 'شهرية', value: 'monthly' }
+                            )
+                            .setRequired(true)
+                    )
+                    .addIntegerOption(o =>
+                        o
+                            .setName('duration_hours')
+                            .setDescription('الوقت بالساعات حتى الإغلاق')
+                            .setRequired(true)
+                    )
+                    .addIntegerOption(o =>
+                        o
+                            .setName('week_number')
+                            .setDescription(
+                                'رقم الأسبوع في الموسم (للمهام الأسبوعية)'
+                            )
+                            .setRequired(false)
+                    )
+                    .addAttachmentOption(o =>
+                        o
+                            .setName('image')
+                            .setDescription('صورة مرفقة (اختياري)')
+                            .setRequired(false)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('task_link')
+                    .setDescription('ربط ثريد موجود مسبقاً بنظام المهام')
+                    .addStringOption(o =>
+                        o
+                            .setName('thread_id')
+                            .setDescription('معرف الثريد')
+                            .setRequired(true)
+                    )
+                    .addStringOption(o =>
+                        o
+                            .setName('type')
+                            .setDescription('نوع المهمة')
+                            .addChoices(
+                                { name: 'أسبوعية', value: 'weekly' },
+                                { name: 'شهرية', value: 'monthly' }
+                            )
+                            .setRequired(true)
+                    )
+                    .addIntegerOption(o =>
+                        o
+                            .setName('duration_hours')
+                            .setDescription('الوقت بالساعات حتى الإغلاق')
+                            .setRequired(true)
+                    )
+                    .addIntegerOption(o =>
+                        o
+                            .setName('week_number')
+                            .setDescription(
+                                'رقم الأسبوع في الموسم (للمهام الأسبوعية)'
+                            )
+                            .setRequired(false)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('task_list')
+                    .setDescription('عرض المهام النشطة الحالية')
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('sync_tasks')
+                    .setDescription(
+                        'مزامنة مهمة من Thread (معرف الثريد + النوع + الرقم)'
+                    )
+                    .addStringOption(o =>
+                        o
+                            .setName('thread_id')
+                            .setDescription('ID ثريد المهمة')
+                            .setRequired(true)
+                    )
+                    .addStringOption(o =>
+                        o
+                            .setName('type')
+                            .setDescription('نوع المهمة')
+                            .addChoices(
+                                { name: 'أسبوعية', value: 'weekly' },
+                                { name: 'شهرية', value: 'monthly' }
+                            )
+                            .setRequired(true)
+                    )
+                    .addIntegerOption(o =>
+                        o
+                            .setName('number')
+                            .setDescription('رقم أو ترتيب المهمة')
+                            .setRequired(true)
+                    )
+            )
+    )
 
-async function createThreadExecute(interaction, { db, client }) {
-    try {
-        await interaction.deferReply({ ephemeral: true });
-        const userOpt = interaction.options.getUser('user');
-        const userId = userOpt.id;
-        const user = db.getUser(userId);
-        if (!user) return interaction.editReply('❌ العضو غير مسجل في النظام.');
-        const config = db.getConfig(interaction.guild.id);
-        if (!config?.forum_id) return interaction.editReply('❌ النظام غير معد. استخدم /setup أولاً.');
-        const forum = await interaction.guild.channels.fetch(config.forum_id).catch(() => null);
-        if (!forum) return interaction.editReply('❌ قناة العادات غير موجودة.');
-        const thread = await forum.threads.create({
-            name: `مساحة ${user.name} 🌱`,
-            message: { content: '🌱 جاري التحضير...' }
-        });
-        db.updateUser(userId, { thread_id: thread.id });
-        await updateDashboard(thread, userId, db);
-        const welcomeMsg = await thread.send({ content: `👋 <@${userId}> دي مساحتك الجديدة.\n*(هتتمسح بعد دقيقة)*` });
-        setTimeout(() => welcomeMsg.delete().catch(() => {}), 60000);
-        await interaction.editReply(`✅ **تم إنشاء مساحة جديدة لـ** ${userOpt.username}\n\nالمساحة: <#${thread.id}>`);
-    } catch (e) {
-        console.error('❌ create_thread:', e);
-        await interaction.editReply(ERR).catch(() => {});
-    }
-}
+    // Challenges group
+    .addSubcommandGroup(group =>
+        group
+            .setName('challenges')
+            .setDescription('إدارة التحديات والليدربورد')
+            .addSubcommand(sub =>
+                sub
+                    .setName('challenge_create')
+                    .setDescription(
+                        'إنشاء تحدي جديد (عنوان ووصف فقط — استخدم sync_challenge لربط المدة والنقاط)'
+                    )
+                    .addAttachmentOption(o =>
+                        o
+                            .setName('image')
+                            .setDescription('صورة (اختياري)')
+                            .setRequired(false)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('challenge_stats')
+                    .setDescription('إحصائيات تحدي مع الليدربورد الكاملة')
+                    .addIntegerOption(o =>
+                        o
+                            .setName('id')
+                            .setDescription('معرف التحدي')
+                            .setRequired(true)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('challenge_end')
+                    .setDescription('إنهاء تحدي وإعلان الفائزين')
+                    .addIntegerOption(o =>
+                        o
+                            .setName('id')
+                            .setDescription('معرف التحدي')
+                            .setRequired(true)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('sync_challenge')
+                    .setDescription('ربط ثريد تحدي موجود بالمدة والنقاط')
+                    .addStringOption(o =>
+                        o
+                            .setName('thread_id')
+                            .setDescription('معرف الـ Thread')
+                            .setRequired(true)
+                    )
+            )
+    )
 
-// ==========================================
-// 📅 /start_season — بدء Season جديد (28 يوم)
-// ==========================================
-const startSeasonData = new SlashCommandBuilder()
-    .setName('start_season')
-    .setDescription('بدء Season جديد مدته 28 يوم (Cycle)')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addStringOption(o =>
-        o.setName('start_date')
-            .setDescription('تاريخ البداية بصيغة DD-MM-YYYY')
-            .setRequired(true)
+    // Season group
+    .addSubcommandGroup(group =>
+        group
+            .setName('season')
+            .setDescription('إدارة مواسم الـ Season')
+            .addSubcommand(sub =>
+                sub
+                    .setName('start_season')
+                    .setDescription(
+                        'بدء Season جديد مدته 28 يوم بتاريخ بداية بصيغة DD-MM-YYYY'
+                    )
+                    .addStringOption(o =>
+                        o
+                            .setName('start_date')
+                            .setDescription('تاريخ البداية بصيغة DD-MM-YYYY')
+                            .setRequired(true)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('end_season')
+                    .setDescription('إنهاء الـ Season الحالي يدوياً')
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('season_info')
+                    .setDescription('عرض معلومات وخريطة الموسم الحالي')
+            )
+    )
+
+    // Users group
+    .addSubcommandGroup(group =>
+        group
+            .setName('users')
+            .setDescription('إنذارات الأعضاء والـ Timeout')
+            .addSubcommand(sub =>
+                sub
+                    .setName('warn')
+                    .setDescription('إعطاء إنذار يدوي لعضو')
+                    .addUserOption(o =>
+                        o
+                            .setName('user')
+                            .setDescription('العضو')
+                            .setRequired(true)
+                    )
+                    .addStringOption(o =>
+                        o
+                            .setName('reason')
+                            .setDescription('سبب الإنذار (اختياري)')
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('remove_warn')
+                    .setDescription('رفع إنذار واحد عن عضو')
+                    .addUserOption(o =>
+                        o
+                            .setName('user')
+                            .setDescription('العضو')
+                            .setRequired(true)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('clear_warns')
+                    .setDescription('مسح كل إنذارات عضو')
+                    .addUserOption(o =>
+                        o
+                            .setName('user')
+                            .setDescription('العضو')
+                            .setRequired(true)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('warnings')
+                    .setDescription('عرض سجل إنذارات عضو')
+                    .addUserOption(o =>
+                        o
+                            .setName('user')
+                            .setDescription('العضو')
+                            .setRequired(true)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('warnings_all')
+                    .setDescription('عرض كل الأعضاء ذوي إنذارات')
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('warnings_auto_toggle')
+                    .setDescription(
+                        'إيقاف/تشغيل نظام الإنذارات التلقائية'
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('timeout_list')
+                    .setDescription('قائمة الـ Timeouts المعلقة')
+            )
+    )
+
+    // System group
+    .addSubcommandGroup(group =>
+        group
+            .setName('system')
+            .setDescription('إعداد النظام والصيانة')
+            .addSubcommand(sub =>
+                sub
+                    .setName('setup')
+                    .setDescription(
+                        'فتح لوحة إعداد نظام محاولات (قنوات العادات والمتفوقين)'
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('register_members')
+                    .setDescription(
+                        'تسجيل كل الأعضاء اللي معاهم رول الميمبر في الداتابيز'
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('create_thread')
+                    .setDescription('إنشاء مساحة (Thread) جديدة لعضو')
+                    .addUserOption(o =>
+                        o
+                            .setName('user')
+                            .setDescription('العضو')
+                            .setRequired(true)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('recreate_dashboard')
+                    .setDescription('إعادة بناء الداشبورد لعضو')
+                    .addUserOption(o =>
+                        o
+                            .setName('user')
+                            .setDescription('العضو')
+                            .setRequired(true)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('db_backup')
+                    .setDescription('نسخة احتياطية من قاعدة البيانات')
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('debug_status')
+                    .setDescription(
+                        'حالة البوت (أعضاء، uptime، تقارير اليوم)'
+                    )
+            )
+    )
+
+    // Automation group
+    .addSubcommandGroup(group =>
+        group
+            .setName('automation')
+            .setDescription('الردود التلقائية والرسائل المجدولة')
+            .addSubcommand(sub =>
+                sub
+                    .setName('autorespond_add')
+                    .setDescription('إضافة رد تلقائي')
+                    .addStringOption(o =>
+                        o
+                            .setName('channels')
+                            .setDescription(
+                                'معرفات القنوات مفصولة بفاصلة (أو اترك للكل)'
+                            )
+                    )
+                    .addStringOption(o =>
+                        o
+                            .setName('match')
+                            .setDescription('نوع المطابقة')
+                            .addChoices(
+                                { name: 'يحتوي على', value: 'contains' },
+                                { name: 'تطابق تام', value: 'exact' },
+                                {
+                                    name: 'يبدأ بـ',
+                                    value: 'startswith'
+                                }
+                            )
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('autorespond_list')
+                    .setDescription('عرض كل الردود التلقائية')
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('autorespond_toggle')
+                    .setDescription('تفعيل/إيقاف رد تلقائي')
+                    .addIntegerOption(o =>
+                        o
+                            .setName('id')
+                            .setDescription('معرف الرد')
+                            .setRequired(true)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('autorespond_delete')
+                    .setDescription('حذف رد تلقائي')
+                    .addIntegerOption(o =>
+                        o
+                            .setName('id')
+                            .setDescription('معرف الرد')
+                            .setRequired(true)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('schedule_add')
+                    .setDescription('إضافة رسالة مجدولة')
+                    .addChannelOption(o =>
+                        o
+                            .setName('channel')
+                            .setDescription('القناة')
+                            .setRequired(true)
+                    )
+                    .addStringOption(o =>
+                        o
+                            .setName('repeat')
+                            .setDescription('التكرار')
+                            .addChoices(
+                                { name: 'يومي', value: 'daily' },
+                                { name: 'أسبوعي', value: 'weekly' },
+                                { name: 'مرة واحدة', value: 'once' }
+                            )
+                            .setRequired(true)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('schedule_list')
+                    .setDescription('عرض كل الرسائل المجدولة')
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('schedule_pause')
+                    .setDescription('إيقاف رسالة مجدولة مؤقتاً')
+                    .addIntegerOption(o =>
+                        o
+                            .setName('id')
+                            .setDescription('معرف الجدولة')
+                            .setRequired(true)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('schedule_resume')
+                    .setDescription('استئناف رسالة مجدولة')
+                    .addIntegerOption(o =>
+                        o
+                            .setName('id')
+                            .setDescription('معرف الجدولة')
+                            .setRequired(true)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('schedule_delete')
+                    .setDescription('حذف رسالة مجدولة')
+                    .addIntegerOption(o =>
+                        o
+                            .setName('id')
+                            .setDescription('معرف الجدولة')
+                            .setRequired(true)
+                    )
+            )
+    )
+
+    // Test group
+    .addSubcommandGroup(group =>
+        group
+            .setName('test')
+            .setDescription('أوامر الاختبار وتشغيل الأتمتة يدوياً')
+            .addSubcommand(sub =>
+                sub
+                    .setName('migrate_db')
+                    .setDescription(
+                        'تحديث قاعدة البيانات (تشغيل مرة واحدة بس)'
+                    )
+            )
+            .addSubcommand(sub =>
+                sub.setName('test_morning').setDescription('اختبار رسالة الصباح')
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('test_evening')
+                    .setDescription('اختبار محاسبة المساء')
+            )
+            .addSubcommand(sub =>
+                sub.setName('test_reset').setDescription('اختبار التصفير اليومي')
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('test_weekly')
+                    .setDescription('اختبار لوحة الشرف')
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('test_daily')
+                    .setDescription('اختبار إنشاء بوست التقرير اليومي')
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('test_lock_daily')
+                    .setDescription('اختبار قفل بوست التقرير اليومي')
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('test_lock_tasks')
+                    .setDescription('اختبار قفل المهام المنتهية')
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('test_warnings')
+                    .setDescription('اختبار فحص الإنذارات الأسبوعي')
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('test_challenges')
+                    .setDescription('اختبار فحص التحديات المنتهية')
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('test_monthly')
+                    .setDescription('اختبار تذكير أهداف الشهر')
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('test_harvest')
+                    .setDescription(
+                        'اختبار رسالة الحصاد للأسبوع الحالي في القناة الحالية'
+                    )
+            )
     );
 
-async function startSeasonExecute(interaction, { db }) {
-    try {
-        await interaction.deferReply({ ephemeral: true });
-        const input = interaction.options.getString('start_date').trim();
-        const m = input.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-        if (!m) {
-            return interaction.editReply('❌ تنسيق التاريخ غير صحيح. استخدم **DD-MM-YYYY** (مثال: 01-03-2026).');
-        }
-        const [ , dd, mm, yyyy ] = m;
-        const iso = `${yyyy}-${mm}-${dd}`;
-        const d = new Date(iso);
-        if (Number.isNaN(d.getTime()) || d.getFullYear().toString() !== yyyy || (d.getMonth() + 1).toString().padStart(2, '0') !== mm || d.getDate().toString().padStart(2, '0') !== dd) {
-            return interaction.editReply('❌ تاريخ غير صالح. تأكد من اليوم والشهر والسنة.');
-        }
-
-        const duration = 28;
-        db.startCustomMonth(iso, duration);
-        await interaction.editReply(
-            `✅ تم بدء Season جديد (28 يوم).\n📅 بداية السيزون: **${input}** (يحفظ كـ ${iso} في النظام).`
-        );
-    } catch (e) {
-        console.error('❌ start_season:', e);
-        await interaction.editReply(ERR).catch(() => {});
+async function execute(interaction, deps) {
+    const group = interaction.options.getSubcommandGroup();
+    switch (group) {
+        case 'reports':
+            return handleReports(interaction, deps);
+        case 'tasks':
+            return handleTasks(interaction, deps);
+        case 'challenges':
+            return handleChallenges(interaction, deps);
+        case 'season':
+            return handleSeason(interaction, deps);
+        case 'users':
+            return handleUsers(interaction, deps);
+        case 'system':
+            return handleSystem(interaction, deps);
+        case 'automation':
+            return handleAutomation(interaction, deps);
+        case 'test':
+            return handleTest(interaction, deps);
+        default:
+            throw new Error(`Unknown admin subcommand group: ${group}`);
     }
 }
 
-// ==========================================
-// 📅 /end_season — إنهاء الـ Season الحالي
-// ==========================================
-const endSeasonData = new SlashCommandBuilder()
-    .setName('end_season')
-    .setDescription('إنهاء الـ Season الحالي يدوياً')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
+module.exports = { data, execute };
 
-async function endSeasonExecute(interaction, { db }) {
-    try {
-        await interaction.deferReply({ ephemeral: true });
-        db.endCustomMonth();
-        await interaction.editReply('✅ تم إغلاق الـ Season الحالي.');
-    } catch (e) {
-        console.error('❌ end_season:', e);
-        await interaction.editReply(ERR).catch(() => {});
-    }
-}
-
-// ==========================================
-// 📊 /season_info — خريطة الموسم الحالي (28 يوم)
-// ==========================================
-const seasonInfoData = new SlashCommandBuilder()
-    .setName('season_info')
-    .setDescription('عرض معلومات وخريطة الموسم الحالي')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
-
-async function seasonInfoExecute(interaction, { db }) {
-    try {
-        await interaction.deferReply({ ephemeral: true });
-        const active = db.getActiveMonth();
-        if (!active) return interaction.editReply('❌ لا يوجد Season نشط حالياً.');
-
-        const TZ = 'Africa/Cairo';
-        const seasonStartStr = active.start_date; // YYYY-MM-DD
-        const duration = active.duration_days || 28;
-
-        const cairoTimeStr = new Date().toLocaleString('en-US', { timeZone: TZ });
-        const cairoDate = new Date(cairoTimeStr);
-        const yyyy = cairoDate.getFullYear();
-        const mm = String(cairoDate.getMonth() + 1).padStart(2, '0');
-        const dd = String(cairoDate.getDate()).padStart(2, '0');
-        const todayStr = `${yyyy}-${mm}-${dd}`;
-
-        const seasonStart = new Date(seasonStartStr + 'T00:00:00.000Z');
-        const todayUtc = new Date(todayStr + 'T00:00:00.000Z');
-        const diffDays = Math.floor((todayUtc - seasonStart) / 86400000);
-
-        const addDays = (base, n) => {
-            const d = new Date(base);
-            d.setUTCDate(d.getUTCDate() + n);
-            return d;
-        };
-        const toDDMMYYYY = (d) => {
-            const day = String(d.getUTCDate()).padStart(2, '0');
-            const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-            const year = d.getUTCFullYear();
-            return `${day}-${month}-${year}`;
-        };
-
-        const endDate = addDays(seasonStart, duration - 1);
-        const startFormatted = toDDMMYYYY(seasonStart);
-        const endFormatted = toDDMMYYYY(endDate);
-
-        let status, currentDayLabel, weekMapLines;
-        if (diffDays >= duration) {
-            status = 'انتهى 🔴 (يجب بدء موسم جديد)';
-            currentDayLabel = '—';
-            weekMapLines = [
-                `**الأسبوع 1** ${toDDMMYYYY(addDays(seasonStart, 0))} → ${toDDMMYYYY(addDays(seasonStart, 6))}`,
-                `**الأسبوع 2** ${toDDMMYYYY(addDays(seasonStart, 7))} → ${toDDMMYYYY(addDays(seasonStart, 13))}`,
-                `**الأسبوع 3** ${toDDMMYYYY(addDays(seasonStart, 14))} → ${toDDMMYYYY(addDays(seasonStart, 20))}`,
-                `**الأسبوع 4** ${toDDMMYYYY(addDays(seasonStart, 21))} → ${toDDMMYYYY(addDays(seasonStart, 27))}`,
-            ];
-        } else if (diffDays >= 0 && diffDays < duration) {
-            status = 'نشط 🟢';
-            const currentDay = diffDays + 1;
-            currentDayLabel = `${currentDay} من ${duration}`;
-            const weekIndex = Math.floor(diffDays / 7); // 0..3
-            weekMapLines = [
-                `**الأسبوع 1** ${toDDMMYYYY(addDays(seasonStart, 0))} → ${toDDMMYYYY(addDays(seasonStart, 6))}${weekIndex === 0 ? ' 📍' : ''}`,
-                `**الأسبوع 2** ${toDDMMYYYY(addDays(seasonStart, 7))} → ${toDDMMYYYY(addDays(seasonStart, 13))}${weekIndex === 1 ? ' 📍' : ''}`,
-                `**الأسبوع 3** ${toDDMMYYYY(addDays(seasonStart, 14))} → ${toDDMMYYYY(addDays(seasonStart, 20))}${weekIndex === 2 ? ' 📍' : ''}`,
-                `**الأسبوع 4** ${toDDMMYYYY(addDays(seasonStart, 21))} → ${toDDMMYYYY(addDays(seasonStart, 27))}${weekIndex === 3 ? ' 📍' : ''}`,
-            ];
-        } else {
-            status = 'لم يبدأ بعد 🟡';
-            currentDayLabel = '—';
-            weekMapLines = [
-                `**الأسبوع 1** ${toDDMMYYYY(addDays(seasonStart, 0))} → ${toDDMMYYYY(addDays(seasonStart, 6))}`,
-                `**الأسبوع 2** ${toDDMMYYYY(addDays(seasonStart, 7))} → ${toDDMMYYYY(addDays(seasonStart, 13))}`,
-                `**الأسبوع 3** ${toDDMMYYYY(addDays(seasonStart, 14))} → ${toDDMMYYYY(addDays(seasonStart, 20))}`,
-                `**الأسبوع 4** ${toDDMMYYYY(addDays(seasonStart, 21))} → ${toDDMMYYYY(addDays(seasonStart, 27))}`,
-            ];
-        }
-
-        const embed = new EmbedBuilder()
-            .setColor(CONFIG.COLORS?.primary ?? 0x2ecc71)
-            .setTitle('📊 خريطة الموسم الحالي (Season)')
-            .addFields(
-                { name: 'بداية الموسم', value: startFormatted, inline: true },
-                { name: 'نهاية الموسم', value: endFormatted, inline: true },
-                { name: 'الحالة', value: status, inline: true },
-                { name: 'اليوم الحالي', value: currentDayLabel, inline: false },
-                { name: 'خريطة الأسابيع الأربعة', value: weekMapLines.join('\n'), inline: false }
-            )
-            .setFooter({ text: `توقيت القاهرة (${TZ})` });
-
-        await interaction.editReply({ embeds: [embed] });
-    } catch (e) {
-        console.error('❌ season_info:', e);
-        await interaction.editReply(ERR).catch(() => {});
-    }
-}
-
-// ==========================================
-// 🔄 /unsync_reports — حذف تقارير يوم معين لكل الأعضاء
-// ==========================================
-const unsyncReportsData = new SlashCommandBuilder()
-    .setName('unsync_reports')
-    .setDescription('حذف جميع التقارير اليومية ليوم معين (لإعادة المزامنة لاحقاً)')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addStringOption(o => o.setName('thread_id').setDescription('معرف الـ Thread (لمطابقة أمر المزامنة)').setRequired(true))
-    .addStringOption(o => o.setName('date').setDescription('تاريخ اليوم بصيغة DD-MM-YYYY').setRequired(true));
-
-async function unsyncReportsExecute(interaction, { db }) {
-    try {
-        await interaction.deferReply({ ephemeral: true });
-        const input = (interaction.options.getString('date') || '').trim();
-        const m = input.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-        if (!m) {
-            return interaction.editReply('❌ صيغة التاريخ غير صحيحة. استخدم **DD-MM-YYYY** (مثال: 28-02-2026).');
-        }
-        const [, dd, mm, yyyy] = m;
-        const isoDate = `${yyyy}-${mm}-${dd}`;
-        const d = new Date(isoDate);
-        if (Number.isNaN(d.getTime()) || d.getFullYear().toString() !== yyyy || String(d.getMonth() + 1).padStart(2, '0') !== mm || String(d.getDate()).padStart(2, '0') !== dd) {
-            return interaction.editReply('❌ تاريخ غير صالح. تأكد من اليوم والشهر والسنة.');
-        }
-        db.removeAllReportsForDate(isoDate);
-        await interaction.editReply(`✅ تم حذف جميع التقارير اليومية لكل الأعضاء ليوم **${input}** بنجاح. يمكنك إعادة المزامنة الآن.`);
-    } catch (e) {
-        console.error('❌ unsync_reports:', e);
-        await interaction.editReply(ERR).catch(() => {});
-    }
-}
-
-// ==========================================
-// 🧪 /test_harvest — اختبار الحصاد الأسبوعي الحالي
-// ==========================================
-const testHarvestData = new SlashCommandBuilder()
-    .setName('test_harvest')
-    .setDescription('اختبار رسالة الحصاد للأسبوع الحالي في القناة الحالية')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
-
-async function testHarvestExecute(interaction, { automation }) {
-    try {
-        await interaction.deferReply({ ephemeral: true });
-        if (!automation || typeof automation.weeklyHarvest !== 'function') {
-            return interaction.editReply('❌ نظام الأتمتة غير جاهز حالياً.');
-        }
-        await automation.weeklyHarvest(interaction);
-    } catch (e) {
-        console.error('❌ test_harvest:', e);
-        await interaction.editReply(ERR).catch(() => {});
-    }
-}
-
-const commands = [
-    { data: recreateDashboardData, execute: recreateDashboardExecute },
-    { data: createThreadData, execute: createThreadExecute },
-    { data: startSeasonData, execute: startSeasonExecute },
-    { data: endSeasonData, execute: endSeasonExecute },
-    { data: seasonInfoData, execute: seasonInfoExecute },
-    { data: unsyncReportsData, execute: unsyncReportsExecute },
-    { data: testHarvestData, execute: testHarvestExecute }
-];
-
-module.exports = { commands };

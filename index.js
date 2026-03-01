@@ -19,18 +19,20 @@ const { showAddHabitModal, processAddHabit, toggleHabit, showDeleteMenu, process
 const { showEditProfileModal, processSaveProfile, showYearlyGoalModal, showMonthlyGoalModal, showWeeklyGoalModal, processSaveYearlyGoal, processSaveMonthlyGoal, processSaveWeeklyGoal } = require('./src/handlers/profile');
 const { showStats, showAchievements }                                                           = require('./src/handlers/stats');
 const { updateDashboard, showJournalModal, processJournalModal, showJournalLog } = require('./src/utils/dashboard');
-const { handleChallengeMessage, handleChallengeLeaderboardButton } = require('./src/commands/challenges');
+const { handleChallengeMessage, handleChallengeLeaderboardButton, processChallengeCreateModal, processSyncChallengeModal } = require('./src/commands/challenges');
 
 // Setup & message handlers (buttons/modals/auto-response)
-const { handleAutoSetup, showCustomSetupModal, handleCustomSetup, showManualSetupModal, handleManualSetup } = require('./src/commands/setup');
-const { handleAutoResponse } = require('./src/commands/autoResponder');
-const { handleHelpButton } = require('./src/commands/help');
-const { handleDailyReportButton } = require('./src/commands/dailyReport');
+const {
+    handleSystem: _handleSystemInternal,
+    handleAutoSetup,
+    showCustomSetupModal,
+    handleCustomSetup,
+    showManualSetupModal,
+    handleManualSetup
+} = require('./src/commands/system');
+const { handleAutoResponse, processScheduleAddModal, processAutorespondAddModal } = require('./src/commands/automation_cmds');
+const { handleDailyReportButton } = require('./src/commands/reports');
 const { processTaskCreateModal } = require('./src/commands/tasks');
-const { processChallengeCreateModal } = require('./src/commands/challenges');
-const { processSyncChallengeModal } = require('./src/commands/sync_challenge');
-const { processScheduleAddModal } = require('./src/commands/scheduler');
-const { processAutorespondAddModal } = require('./src/commands/autoResponder');
 
 // ==========================================
 // CLIENT
@@ -261,7 +263,6 @@ client.on('interactionCreate', async interaction => {
 
         if (interaction.isButton()) {
             const id = interaction.customId;
-            if (id.startsWith('help_prev_') || id.startsWith('help_next_')) return handleHelpButton(interaction);
             if (id.startsWith('clb_prev_') || id.startsWith('clb_next_')) return handleChallengeLeaderboardButton(interaction, db);
             if (id.startsWith('dr_')) return handleDailyReportButton(interaction, db);
 

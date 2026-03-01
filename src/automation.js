@@ -15,7 +15,7 @@ const {
     getEveningPerfectMessage,
     getEveningMissingMessage
 } = require('./utils/responses');
-const { issueWarning } = require('./commands/warnings');
+const { issueWarning } = require('./commands/users');
 
 const TZ = process.env.TIMEZONE || 'Africa/Cairo';
 

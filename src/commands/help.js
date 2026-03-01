@@ -2,189 +2,60 @@
 // 📖 HELP — Slash Command (Paginated)
 // ==========================================
 
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const CONFIG = require('../config');
 
 const ERR = CONFIG.ADMIN?.unifiedErrorMessage || '❌ حدث خطأ داخلي.';
 
-// دليل الأدمن — 4 صفحات، صياغة احترافية موجهة للإداريين فقط
-function getPages() {
-    return [
-        // ==========================================
-        // 📄 صفحة 1 — الإعداد وإدارة الأعضاء
-        // ==========================================
-        new EmbedBuilder()
-            .setColor(CONFIG.COLORS.primary)
-            .setTitle('🛠️ دليل الأدمن | صفحة 1/4')
-            .addFields(
-                {
-                    name: '🚀 الإعداد',
-                    value: [
-                        '**`/setup`**\n> فتح قائمة إعداد البوت (تلقائي / مخصص / ربط يدوي).',
-                    ].join('\n\n'),
-                    inline: false
-                },
-                {
-                    name: '👤 إدارة الأعضاء',
-                    value: [
-                        '**`/register_members`**\n> تسجيل جميع الأعضاء ذوي رول العضو في قاعدة البيانات.',
-                        '**`/recreate_dashboard user:`**\n> إعادة بناء رسالة الداشبورد لعضو محدد في مساحته الخاصة.',
-                        '**`/create_thread user:`**\n> إنشاء مساحة (Thread) جديدة لعضو لا يملك مساحة مسجّلة.',
-                    ].join('\n\n'),
-                    inline: false
-                },
-            )
-            .setFooter({ text: 'صفحة 1 من 4 — استخدم الأزرار للتنقل' }),
-
-        // ==========================================
-        // 📄 صفحة 2 — التقارير اليومية، Seasons، المهام
-        // ==========================================
-        new EmbedBuilder()
-            .setColor(CONFIG.COLORS.warning)
-            .setTitle('🛠️ دليل الأدمن | صفحة 2/4')
-            .addFields(
-                {
-                    name: '📝 التقارير اليومية',
-                    value: [
-                        '**`/daily_done`**\n> عرض الأعضاء الذين سجّلوا تقريرهم اليوم.',
-                        '**`/daily_missing`**\n> عرض الأعضاء الذين لم يسجّلوا تقريرهم بعد.',
-                        '**`/sync_reports thread_id: date:`**\n> مزامنة التقارير من Thread بتاريخ معين (DD-MM-YYYY) وتسجيلها في قاعدة البيانات.',
-                        '**`/unsync_reports thread_id: date:`**\n> حذف جميع التقارير المسجّلة للأعضاء في يوم معين (DD-MM-YYYY) للتراجع عن مزامنة خاطئة أو إعادة المزامنة.',
-                    ].join('\n\n'),
-                    inline: false
-                },
-                {
-                    name: '📅 Seasons (دورات 28 يوم)',
-                    value: [
-                        '**`/start_season start_date:`**\n> بدء Season جديد مدته 28 يوم بتاريخ بداية بصيغة DD-MM-YYYY (مثال: 01-03-2026).',
-                        '**`/end_season`**\n> إنهاء الـ Season الحالي يدوياً وإيقاف تتبّعه.',
-                        '**`/season_info`**\n> عرض تفاصيل الموسم الحالي، اليوم الحالي (من 28)، وخريطة الأسابيع الأربعة.',
-                    ].join('\n\n'),
-                    inline: false
-                },
-                {
-                    name: '📌 المهام',
-                    value: [
-                        '**`/task_create type: duration_hours: [week_number:] [image:]`**\n> إنشاء مهمة بنص مخصص وتحديد ساعات إغلاقها وربطها برقم الأسبوع.',
-                        '**`/task_link thread_id: type: duration_hours: [week_number:]`**\n> ربط ثريد موجود مسبقاً بنظام المهام ليتم إغلاقه تلقائياً.',
-                        '**`/task_list`**\n> عرض المهام النشطة ومواعيد قفل كل مهمة.',
-                        '**`/sync_tasks thread_id: type: number:`**\n> مزامنة إتمام المهام من ثريد محدد مباشرة بدون نوافذ إضافية (يدعم النصوص والمرفقات كدليل إتمام).',
-                    ].join('\n\n'),
-                    inline: false
-                },
-            )
-            .setFooter({ text: 'صفحة 2 من 4 — استخدم الأزرار للتنقل' }),
-
-        // ==========================================
-        // 📄 صفحة 3 — التحديات والإنذارات
-        // ==========================================
-        new EmbedBuilder()
-            .setColor(CONFIG.COLORS.success)
-            .setTitle('🛠️ دليل الأدمن | صفحة 3/4')
-            .addFields(
-                {
-                    name: '🏆 التحديات',
-                    value: [
-                        '**`/challenge_create [image:]`**\n> إنشاء تحدي جديد (مع صورة اختيارية) ونشره في قناة التحديات.',
-                        '**`/sync_challenge thread_id:`**\n> ربط ثريد التحدي بالمدة (أيام) ووقت/نقاط التحدي في قاعدة البيانات.',
-                        '**`/challenge_stats id:`**\n> عرض إحصائيات التحدي ولوحة المتصدرين بصفحات.',
-                        '**`/challenge_end id:`**\n> إنهاء التحدي يدوياً وإعلان الفائزين.',
-                    ].join('\n\n'),
-                    inline: false
-                },
-                {
-                    name: '⚠️ الإنذارات',
-                    value: [
-                        '**`/warn user: [reason:]`**\n> إصدار إنذار يدوي لعضو مع سبب اختياري يُسجَّل في السجل.',
-                        '**`/remove_warn user:`**\n> إزالة إنذار واحد عن عضو وتقليل عدّاده.',
-                        '**`/clear_warns user:`**\n> مسح جميع الإنذارات المسجّلة على عضو.',
-                        '**`/warnings user:`**\n> عرض سجل إنذارات عضو وحالته الحالية.',
-                        '**`/warnings_all`**\n> عرض قائمة الأعضاء الذين لديهم إنذارات مرتّبة حسب العدد.',
-                        '**`/timeout_list`**\n> عرض الأعضاء الذين بلغوا 3 إنذارات (مرشّحين للتايم أوت).',
-                        '**`/warnings_auto_toggle`**\n> إيقاف أو تشغيل نظام الإنذارات التلقائية (رادار التقصير الأسبوعي).',
-                    ].join('\n\n'),
-                    inline: false
-                },
-            )
-            .setFooter({ text: 'صفحة 3 من 4 — استخدم الأزرار للتنقل' }),
-
-        // ==========================================
-        // 📄 صفحة 4 — الأتمتة والجدولة والصيانة
-        // ==========================================
-        new EmbedBuilder()
-            .setColor(CONFIG.COLORS.info || CONFIG.COLORS.primary)
-            .setTitle('🛠️ دليل الأدمن | صفحة 4/4')
-            .addFields(
-                {
-                    name: '🤖 الردود التلقائية',
-                    value: [
-                        '**`/autorespond_add [channels:] [match:]`**\n> إضافة رد تلقائي جديد (نص محفّز، نص الرد، القنوات ونوع المطابقة).',
-                        '**`/autorespond_list`**\n> عرض جميع الردود التلقائية وحالتها الحالية.',
-                        '**`/autorespond_toggle id:`**\n> تفعيل أو إيقاف رد تلقائي معيّن.',
-                        '**`/autorespond_delete id:`**\n> حذف رد تلقائي نهائياً من النظام.',
-                    ].join('\n\n'),
-                    inline: false
-                },
-                {
-                    name: '📅 الجدولة',
-                    value: [
-                        '**`/schedule_add channel: repeat:`**\n> إضافة رسالة مجدولة جديدة (وقت الإرسال، العنوان، النص، والميديا) مع تحديد تكرارها.',
-                        '**`/schedule_list`**\n> عرض جميع الرسائل المجدولة وحالتها (مفعّلة/موقوفة).',
-                        '**`/schedule_pause id:`**\n> إيقاف رسالة مجدولة مؤقتاً بدون حذفها.',
-                        '**`/schedule_resume id:`**\n> استئناف إرسال رسالة مجدولة موقوفة.',
-                        '**`/schedule_delete id:`**\n> حذف رسالة مجدولة من النظام نهائياً.',
-                    ].join('\n\n'),
-                    inline: false
-                },
-                {
-                    name: '🧪 أوامر الاختبار',
-                    value: [
-                        '**`/test_morning`**\n> إرسال رسالة الصباح فوراً لاختبار قالب الرسالة.',
-                        '**`/test_evening`**\n> تشغيل منطق محاسبة المساء فوراً في الوضع التجريبي.',
-                        '**`/test_reset`**\n> تشغيل التصفير اليومي فوراً (للاختبار فقط).',
-                        '**`/test_weekly`**\n> إرسال لوحة الشرف الأسبوعية فوراً لاختبار شكلها.',
-                        '**`/test_daily`**\n> إنشاء بوست التقرير اليومي فوراً للاختبار.',
-                        '**`/test_lock_daily`**\n> قفل بوست التقرير السابق فوراً لاختبار القفل التلقائي.',
-                        '**`/test_lock_tasks`**\n> قفل المهام المنتهية فوراً مع إشعار الأعضاء الناقصين (وضع اختبار).',
-                        '**`/test_warnings`**\n> تشغيل فحص الإنذارات الأسبوعي فوراً بدون انتظار الجدولة.',
-                        '**`/test_challenges`**\n> تشغيل فحص التحديات المنتهية فوراً وإرسال النتائج في الوضع التجريبي.',
-                        '**`/test_monthly`**\n> إرسال تذكير أهداف الشهر فوراً للاختبار.',
-                        '**`/test_harvest`**\n> نشر بوست الحصاد للأسبوع الحالي في القناة الحالية بدون منشن للكل (وضع اختبار).',
-                    ].join('\n\n'),
-                    inline: false
-                },
-                {
-                    name: '📊 الصيانة',
-                    value: [
-                        '**`/debug_status`**\n> عرض حالة البوت (عدد الأعضاء، وقت التشغيل، وعدد تقارير اليوم).',
-                        '**`/db_backup`**\n> إنشاء نسخة احتياطية من قاعدة البيانات يدوياً.',
-                    ].join('\n\n'),
-                    inline: false
-                },
-            )
-            .setFooter({ text: 'صفحة 4 من 4 | دليل الأدمن • Slash Commands' }),
-    ];
-}
-
-// ✅ FIX: تحديث getRow لاستيعاب 4 صفحات (التغيير تلقائي عبر total)
-function getRow(page, total) {
-    return new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId(`help_prev_${page}`)
-            .setLabel('◀ السابق')
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(page === 0),
-        new ButtonBuilder()
-            .setCustomId(`help_page_${page}`)
-            .setLabel(`${page + 1} / ${total}`)
-            .setStyle(ButtonStyle.Primary)
-            .setDisabled(true),
-        new ButtonBuilder()
-            .setCustomId(`help_next_${page}`)
-            .setLabel('التالي ▶')
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(page === total - 1)
-    );
+function buildHelpEmbed() {
+    return new EmbedBuilder()
+        .setColor(CONFIG.COLORS.primary)
+        .setTitle('🛠️ دليل أوامر الأدمن — /admin')
+        .setDescription(
+            'كل أوامر الإدارة أصبحت الآن تحت أمر واحد موحد `/admin` مع مجموعات فرعية واضحة. 👇'
+        )
+        .addFields(
+            {
+                name: '📊 reports',
+                value: 'تقارير يومية، من عمل تقريره أو لم يعمله، ومزامنة / إلغاء مزامنة التقارير من الثريدات.',
+                inline: false
+            },
+            {
+                name: '📌 tasks',
+                value: 'إنشاء المهام الأسبوعية / الشهرية، ربط ثريدات موجودة، عرض المهام النشطة، ومزامنة الإكمالات.',
+                inline: false
+            },
+            {
+                name: '🏆 challenges',
+                value: 'إنشاء التحديات، عرض الإحصائيات والليدربورد، إنهاء التحديات، وربط الثريدات بمدة ونقاط.',
+                inline: false
+            },
+            {
+                name: '📅 season',
+                value: 'بدء وإنهاء Season جديد لمدة 28 يوم، وعرض خريطة الموسم الحالية والأسابيع.',
+                inline: false
+            },
+            {
+                name: '👥 users',
+                value: 'إدارة إنذارات الأعضاء، عرض السجلات، تفعيل الإنذارات التلقائية، وقوائم الـ Timeout المعلّقة.',
+                inline: false
+            },
+            {
+                name: '⚙️ system',
+                value: 'إعداد نظام محاولات، تسجيل الأعضاء، إنشاء/إعادة بناء مساحات الأعضاء، النسخ الاحتياطي، وحالة النظام.',
+                inline: false
+            },
+            {
+                name: '🤖 automation',
+                value: 'الردود التلقائية (autorespond) والرسائل المجدولة (schedule) مع الإضافة، العرض، الإيقاف، والاستئناف.',
+                inline: false
+            },
+            {
+                name: '🧪 test',
+                value: 'تشغيل جميع مهام الأتمتة في وضع الاختبار (صباح، مساء، تقارير، حصاد أسبوعي، تحديات… إلخ) وأمر ترحيل قاعدة البيانات.',
+                inline: false
+            }
+        );
 }
 
 const data = new SlashCommandBuilder()
@@ -194,10 +65,8 @@ const data = new SlashCommandBuilder()
 
 async function execute(interaction) {
     try {
-        const pages = getPages();
         await interaction.reply({
-            embeds: [pages[0]],
-            components: [getRow(0, pages.length)],
+            embeds: [buildHelpEmbed()],
             ephemeral: true
         });
     } catch (e) {
@@ -206,22 +75,4 @@ async function execute(interaction) {
     }
 }
 
-async function handleHelpButton(interaction) {
-    try {
-        const pages = getPages();
-        const id = interaction.customId;
-
-        let page = parseInt(id.split('_')[2]);
-        if (id.startsWith('help_next_')) page = Math.min(page + 1, pages.length - 1);
-        if (id.startsWith('help_prev_')) page = Math.max(page - 1, 0);
-
-        await interaction.update({
-            embeds: [pages[page]],
-            components: [getRow(page, pages.length)]
-        });
-    } catch (e) {
-        console.error('❌ help button:', e);
-    }
-}
-
-module.exports = { data, execute, handleHelpButton };
+module.exports = { data, execute };
