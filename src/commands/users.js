@@ -646,96 +646,32 @@ async function executeRadarRouting(interaction, { db, client }) {
 // ==========================================
 
 async function cleanDepartedExecute(interaction, { db, client }) {
-    await interaction.deferReply({ ephemeral: true });
+    const fs = require('fs');
+    const path = require('path');
+    
+    // الوصول لمجلد الباك أب في السيرفر
+    const backupsDir = path.join(process.cwd(), 'backups');
     
     try {
-        const guild = client.guilds.cache.first();
-        if (!guild) {
-            return interaction.editReply('❌ لا يمكن الوصول إلى السيرفر.');
-        }
-
-        const allUsers = db.getAllUsers();
-        let departedCount = 0;
-        let invalidRoleCount = 0;
-        const departedUsers = [];
-        const invalidRoleUsers = [];
-
-        console.log(`🧹 Starting cleanup for ${allUsers.length} users...`);
-
-        for (const user of allUsers) {
-            try {
-                const member = await guild.members.fetch(user.user_id).catch(() => null);
+        if (fs.existsSync(backupsDir)) {
+            // جلب كل ملفات الباك أب وترتيبها من الأحدث للأقدم
+            const backups = fs.readdirSync(backupsDir)
+                .filter(f => f.startsWith('muhawalat.db.backup'))
+                .sort().reverse();
                 
-                if (!member) {
-                    // User left the server
-                    departedCount++;
-                    departedUsers.push(user);
-                    console.log(`👻 Found departed user: ${user.user_id} (${user.name})`);
-                } else if (process.env.MEMBER_ROLE_ID && !member.roles.cache.has(process.env.MEMBER_ROLE_ID)) {
-                    // User lost member role
-                    invalidRoleCount++;
-                    invalidRoleUsers.push(user);
-                    console.log(`🚫 Found invalid role user: ${user.user_id} (${user.name})`);
-                }
-            } catch (error) {
-                console.error(`❌ Error checking user ${user.user_id}:`, error.message);
+            if (backups.length > 0) {
+                await interaction.reply({ 
+                    content: `📦 **النسخ الاحتياطية المتاحة للاسترجاع:**\n\`\`\`\n${backups.join('\n')}\n\`\`\``, 
+                    ephemeral: true 
+                });
+            } else {
+                await interaction.reply({ content: '⚠️ المجلد موجود بس مفيهوش أي ملفات باك أب.', ephemeral: true });
             }
+        } else {
+            await interaction.reply({ content: '❌ مجلد backups مش موجود على السيرفر أصلاً!', ephemeral: true });
         }
-
-        // Remove departed users from database
-        for (const user of departedUsers) {
-            try {
-                db.db.run('DELETE FROM users WHERE user_id = ?', [user.user_id]);
-                db.db.run('DELETE FROM habits WHERE user_id = ?', [user.user_id]);
-                db.db.run('DELETE FROM stats WHERE user_id = ?', [user.user_id]);
-                console.log(`🗑️ Removed departed user: ${user.user_id}`);
-            } catch (error) {
-                console.error(`❌ Error removing departed user ${user.user_id}:`, error.message);
-            }
-        }
-
-        // Remove users without member role (optional - keep data but mark as inactive)
-        for (const user of invalidRoleUsers) {
-            try {
-                // Option 1: Delete completely (uncomment if preferred)
-                // db.db.run('DELETE FROM users WHERE user_id = ?', [user.user_id]);
-                // db.db.run('DELETE FROM habits WHERE user_id = ?', [user.user_id]);
-                // db.db.run('DELETE FROM stats WHERE user_id = ?', [user.user_id]);
-                
-                // Option 2: Mark as inactive (safer)
-                db.db.run('UPDATE users SET thread_id = NULL WHERE user_id = ?', [user.user_id]);
-                console.log(`⏸️ Deactivated invalid role user: ${user.user_id}`);
-            } catch (error) {
-                console.error(`❌ Error deactivating user ${user.user_id}:`, error.message);
-            }
-        }
-
-        db.save();
-
-        const embed = new EmbedBuilder()
-            .setColor(CONFIG.COLORS.primary)
-            .setTitle('🧹 تنظيف المستخدمين المغادرين')
-            .setDescription(`تم فحص ${allUsers.length} مستخدم في قاعدة البيانات.`)
-            .addFields(
-                {
-                    name: '👻 المستخدمون الذين غادروا السيرفر',
-                    value: `${departedCount} مستخدم (تم حذفهم بالكامل)`,
-                    inline: false
-                },
-                {
-                    name: '🚫 المستخدمون بدون دور العضوية',
-                    value: `${invalidRoleCount} مستخدم (تم إلغاء تفعيلهم)`,
-                    inline: false
-                }
-            )
-            .setTimestamp();
-
-        await interaction.editReply({ embeds: [embed] });
-        console.log(`✅ Cleanup completed: ${departedCount} departed, ${invalidRoleCount} invalid role users processed`);
-
-    } catch (error) {
-        console.error('❌ cleanDepartedExecute error:', error);
-        await interaction.editReply('❌ حدث خطأ أثناء عملية التنظيف.');
+    } catch (e) {
+        await interaction.reply({ content: `❌ Error: ${e.message}`, ephemeral: true });
     }
 }
 
