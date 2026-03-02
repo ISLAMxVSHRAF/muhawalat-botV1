@@ -1215,6 +1215,24 @@ class MuhawalatDatabase {
         return r;
     }
 
+    getTask(taskId) {
+        try {
+            return this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId);
+        } catch (error) {
+            console.error(`Error getting task ${taskId}:`, error);
+            return null;
+        }
+    }
+
+    deleteTask(taskId) {
+        try {
+            return this.db.prepare('DELETE FROM tasks WHERE id = ?').run(taskId);
+        } catch (error) {
+            console.error(`Error deleting task ${taskId}:`, error);
+            return null;
+        }
+    }
+
     updateTask(taskId, fields) {
         const allowed = ['type', 'task_order', 'period', 'lock_at', 'is_locked'];
         const sets = [], vals = [];

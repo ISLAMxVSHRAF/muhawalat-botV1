@@ -561,7 +561,7 @@ async function handleTaskButtons(interaction, deps) {
             
             // Delete task from database
             try {
-                db.db.prepare('DELETE FROM tasks WHERE id = ?').run(taskId);
+                db.deleteTask(taskId);
                 await interaction.update({
                     content: '✅ تم حذف المهمة بنجاح.',
                     embeds: [],
