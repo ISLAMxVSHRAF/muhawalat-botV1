@@ -657,65 +657,89 @@ async function cleanDepartedExecute(interaction, { db, client }) {
             return interaction.editReply('❌ مقدرتش أوصل لقناة المساحات.');
         }
 
-        // هنجيب الناس اللي لسه مساحاتها ضايعة (اللي مفيش ليهم thread_id)
         const allUsers = db.getAllUsers();
         const lostUsers = allUsers.filter(u => !u.thread_id);
 
         if (lostUsers.length === 0) {
-            return interaction.editReply('✅ كل الأعضاء اتربطوا بمساحاتهم بنجاح!');
+            return interaction.editReply('✅ كل الأعضاء مربوطين بمساحاتهم بنجاح!');
         }
 
-        console.log(`🕵️ [Deep Scan] Looking for ${lostUsers.length} missing users...`);
+        console.log(`🔍 [ID Matcher] Looking for ${lostUsers.length} missing users by Exact ID...`);
         
-        // هنجيب كل المساحات (النشطة والقديمة اللي اتأرشفت عشان لو مساحة حد قديمة)
+        // جلب كل المساحات (النشطة والمؤرشفة)
         const activeData = await forumChannel.threads.fetchActive();
         const archivedData = await forumChannel.threads.fetchArchived();
-        
-        // دمج كل المساحات في مكان واحد
-        const allThreads = new Map([...activeData.threads, ...archivedData.threads]);
-        console.log(`🕵️ [Deep Scan] Caching starter messages for ${allThreads.size} threads...`);
-        
-        // المسح العميق: هنفتح المساحات ونقرأ أول رسالة (رسالة الترحيب) ونحفظها عشان منعملش ضغط على ديسكورد
-        const threadContents = new Map();
-        for (const [id, thread] of allThreads) {
-            try {
-                const msg = await thread.fetchStarterMessage();
-                if (msg) threadContents.set(id, msg.content);
-            } catch(e) {}
-        }
+        const allThreads = [...activeData.threads.values(), ...archivedData.threads.values()];
 
         let recoveredCount = 0;
         let log = [];
 
-        for (const user of lostUsers) {
-            let foundThread = null;
-            
-            // مطابقة الـ ID بتاع العضو جوة رسالة الترحيب اللي البوت بيكتبها
-            for (const [id, content] of threadContents) {
-                if (content.includes(user.user_id)) {
-                    foundThread = allThreads.get(id);
-                    break;
-                }
-            }
+        // المرور على كل مساحة واستخراج الـ ID بتاع صاحبها
+        for (const thread of allThreads) {
+            // عشان المساحة لسه مش مربوطة بحد
+            if (!allUsers.some(u => u.thread_id === thread.id)) {
+                let ownerIdFound = null;
 
-            // لو لقى المساحة بالمسح العميق
-            if (foundThread) {
-                db.db.run('UPDATE users SET thread_id = ? WHERE user_id = ?', [foundThread.id, user.user_id]);
-                recoveredCount++;
-                log.push(`✅ تم ربط ${user.name} ➡️ بمساحة <#${foundThread.id}>`);
-            } else {
-                log.push(`❌ لسه مش لاقي مساحة لـ ${user.name} (راجع مساحته يدوياً)`);
+                // 1. فحص رسالة الترحيب الأولى (اللي فيها المنشن بتاع العضو)
+                try {
+                    // رسالة الترحيب دايماً الـ ID بتاعها بيكون نفس الـ ID بتاع الثريد نفسه
+                    const starterMsg = await thread.messages.fetch(thread.id).catch(() => null);
+                    if (starterMsg) {
+                        // لو لقينا منشن لأي شخص في رسالة الترحيب
+                        const mentionedUsers = starterMsg.mentions.users;
+                        for (const [userId, userObj] of mentionedUsers) {
+                            if (!userObj.bot) {
+                                ownerIdFound = userId;
+                                break;
+                            }
+                        }
+                        
+                        // لو ملقيناش بالمنشن الصريح، نبحث في النص عن الـ ID
+                        if (!ownerIdFound) {
+                            for (const lost of lostUsers) {
+                                if (starterMsg.content.includes(lost.user_id)) {
+                                    ownerIdFound = lost.user_id;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                } catch(e) {}
+
+                // 2. لو ملقيناش في الرسالة، نفحص قائمة أعضاء الثريد نفسهم
+                if (!ownerIdFound) {
+                    try {
+                        const threadMembers = await thread.members.fetch();
+                        for (const [memberId, threadMember] of threadMembers) {
+                            // لو العضو ده موجود في قائمة الضايعين
+                            if (lostUsers.some(u => u.user_id === memberId)) {
+                                ownerIdFound = memberId;
+                                break;
+                            }
+                        }
+                    } catch(e) {}
+                }
+
+                // لو لقينا الـ ID بتاع صاحب المساحة، نربطه فوراً
+                if (ownerIdFound) {
+                    const lostUser = lostUsers.find(u => u.user_id === ownerIdFound);
+                    if (lostUser) {
+                        db.db.run('UPDATE users SET thread_id = ? WHERE user_id = ?', [thread.id, lostUser.user_id]);
+                        lostUser.thread_id = thread.id; // تحديث في الذاكرة عشان ميربطوش مرتين
+                        recoveredCount++;
+                        log.push(`✅ تم ربط ${lostUser.name} ➡️ <#${thread.id}> (بالـ ID)`);
+                    }
+                }
             }
         }
         
-        // حفظ الداتابيز
         db.save();
         
-        const resultMsg = `🕵️ **المسح العميق اكتمل!**\nتم ربط **${recoveredCount}** مساحة إضافية من اللي كانوا ناقصين.\n\n${log.join('\n')}`.substring(0, 1900);
-        
+        const resultMsg = `🔍 **تطابق الـ ID اكتمل!**\nتم ربط **${recoveredCount}** مساحة باستخدام أرقام الـ ID.\n\n${log.join('\n')}`.substring(0, 1900);
         await interaction.editReply(resultMsg);
+        
     } catch (e) {
-        console.error('❌ Deep Scan Error:', e);
+        console.error('❌ ID Matcher Error:', e);
         await interaction.editReply(`❌ حدث خطأ: ${e.message}`);
     }
 }
