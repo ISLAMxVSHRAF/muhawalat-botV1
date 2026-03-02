@@ -650,63 +650,72 @@ async function cleanDepartedExecute(interaction, { db, client }) {
     
     try {
         const guild = interaction.guild;
-        
-        // 1. الآي دي بتاع قناة مساحات الأعضاء
         const FORUM_ID = '1466133087896207380'; 
 
         const forumChannel = await guild.channels.fetch(FORUM_ID).catch(() => null);
         if (!forumChannel) {
-            return interaction.editReply('❌ مقدرتش أوصل لقناة المساحات، اتأكد إن الـ ID صح.');
+            return interaction.editReply('❌ مقدرتش أوصل لقناة المساحات.');
         }
 
-        console.log(`🦸‍♂️ [Fix] Resetting all wrong threads...`);
+        // هنجيب الناس اللي لسه مساحاتها ضايعة (اللي مفيش ليهم thread_id)
         const allUsers = db.getAllUsers();
-        
-        // مسح كل الربط الغلط اللي حصل من شوية وتصفيرهم
-        for (const u of allUsers) {
-            db.db.run('UPDATE users SET thread_id = NULL WHERE user_id = ?', [u.user_id]);
+        const lostUsers = allUsers.filter(u => !u.thread_id);
+
+        if (lostUsers.length === 0) {
+            return interaction.editReply('✅ كل الأعضاء اتربطوا بمساحاتهم بنجاح!');
         }
 
-        console.log(`🦸‍♂️ [Fix] Fetching threads from specific forum: ${forumChannel.name}`);
-        // جلب المساحات من جوه قسم مساحات الأعضاء فقط!
-        const { threads } = await forumChannel.threads.fetchActive();
+        console.log(`🕵️ [Deep Scan] Looking for ${lostUsers.length} missing users...`);
         
-        console.log(`🦸‍♂️ [Fix] Caching members for ${threads.size} threads...`);
-        for (const [id, thread] of threads) {
-            try { await thread.members.fetch(); } catch(e) {}
+        // هنجيب كل المساحات (النشطة والقديمة اللي اتأرشفت عشان لو مساحة حد قديمة)
+        const activeData = await forumChannel.threads.fetchActive();
+        const archivedData = await forumChannel.threads.fetchArchived();
+        
+        // دمج كل المساحات في مكان واحد
+        const allThreads = new Map([...activeData.threads, ...archivedData.threads]);
+        console.log(`🕵️ [Deep Scan] Caching starter messages for ${allThreads.size} threads...`);
+        
+        // المسح العميق: هنفتح المساحات ونقرأ أول رسالة (رسالة الترحيب) ونحفظها عشان منعملش ضغط على ديسكورد
+        const threadContents = new Map();
+        for (const [id, thread] of allThreads) {
+            try {
+                const msg = await thread.fetchStarterMessage();
+                if (msg) threadContents.set(id, msg.content);
+            } catch(e) {}
         }
 
         let recoveredCount = 0;
         let log = [];
 
-        for (const user of allUsers) {
+        for (const user of lostUsers) {
             let foundThread = null;
             
-            // البحث جوه مساحات الأعضاء الصحيحة فقط
-            for (const [id, thread] of threads) {
-                if (thread.name.includes(user.name) || thread.members.cache.has(user.user_id)) {
-                    foundThread = thread;
+            // مطابقة الـ ID بتاع العضو جوة رسالة الترحيب اللي البوت بيكتبها
+            for (const [id, content] of threadContents) {
+                if (content.includes(user.user_id)) {
+                    foundThread = allThreads.get(id);
                     break;
                 }
             }
 
+            // لو لقى المساحة بالمسح العميق
             if (foundThread) {
                 db.db.run('UPDATE users SET thread_id = ? WHERE user_id = ?', [foundThread.id, user.user_id]);
                 recoveredCount++;
                 log.push(`✅ تم ربط ${user.name} ➡️ بمساحة <#${foundThread.id}>`);
             } else {
-                log.push(`❌ لم أجد مساحة لـ ${user.name}`);
+                log.push(`❌ لسه مش لاقي مساحة لـ ${user.name} (راجع مساحته يدوياً)`);
             }
         }
         
-        // حفظ الداتابيز بعد التعديل الصح
+        // حفظ الداتابيز
         db.save();
         
-        const resultMsg = `🛠️ **تم تصحيح الكارثة!**\nتم مسح الربط الغلط، وربط **${recoveredCount}** مساحة صحيحة من داخل قسم المساحات فقط.\n\n${log.join('\n')}`.substring(0, 1900);
+        const resultMsg = `🕵️ **المسح العميق اكتمل!**\nتم ربط **${recoveredCount}** مساحة إضافية من اللي كانوا ناقصين.\n\n${log.join('\n')}`.substring(0, 1900);
         
         await interaction.editReply(resultMsg);
     } catch (e) {
-        console.error('❌ Rescue Error:', e);
+        console.error('❌ Deep Scan Error:', e);
         await interaction.editReply(`❌ حدث خطأ: ${e.message}`);
     }
 }
