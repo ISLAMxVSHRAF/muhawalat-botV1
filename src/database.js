@@ -1216,34 +1216,28 @@ class MuhawalatDatabase {
     }
 
     getTask(taskId) {
-        try {
-            const res = this.db.exec(`SELECT * FROM tasks WHERE id = ${parseInt(taskId, 10)}`);
-            if (res && res.length > 0 && res[0].values && res[0].values.length > 0) {
-                const columns = res[0].columns;
-                const values = res[0].values[0];
-                const task = {};
-                for (let i = 0; i < columns.length; i++) {
-                    task[columns[i]] = values[i];
-                }
-                return task;
-            }
-            return null;
-        } catch (error) {
-            console.error(`Error getting task ${taskId}:`, error);
-            return null;
-        }
-    }
+      try {
+          const s = this.db.prepare('SELECT * FROM tasks WHERE id = ?');
+          s.bind([taskId]);
+          const r = s.step() ? s.getAsObject() : null;
+          s.free();
+          return r;
+      } catch (error) {
+          console.error('❌ getTask Error:', error.message);
+          return null;
+      }
+  }
 
     deleteTask(taskId) {
-    try {
-        this.db.run(`DELETE FROM tasks WHERE id = ${parseInt(taskId, 10)}`);
-        if (typeof this.save === 'function') this.save();
-        return true;
-    } catch (error) {
-        console.error(`Error deleting task ${taskId}:`, error);
-        return false;
-    }
-}
+      try {
+          this.db.run('DELETE FROM tasks WHERE id = ?', [taskId]);
+          this.save();
+          return true;
+      } catch (error) {
+          console.error('❌ deleteTask Error:', error.message);
+          return false;
+      }
+  }
 
     updateTask(taskId, fields) {
         const allowed = ['type', 'task_order', 'period', 'lock_at', 'is_locked'];
