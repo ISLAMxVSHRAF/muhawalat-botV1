@@ -338,37 +338,22 @@ function buildDateRange(days) {
 async function segmentUsersByReports(db, days, guild) {
     const { startStr, endStr } = buildDateRange(days);
     const allUsers = db.getAllUsers();
-    let members;
-    try {
-        members = await guild.members.fetch({ time: 120000 }); // wait up to 2 minutes
-    } catch (err) {
-        console.log('Radar member fetch timed out gracefully.');
-        members = new Collection(); // fallback to empty collection
-    }
-
+    
     const complete = [];
     const good = [];
     const danger = [];
     const zero = [];
 
+    // هنلف على الأعضاء من الداتابيز مباشرة عشان نضمن السرعة
     for (const u of allUsers) {
-        // Fix: Strict filtering - ONLY users currently in server AND with member role
-        const member = members.get(u.user_id);
-        if (!member) {
-            console.log(`👻 Radar: Skipping departed user ${u.user_id} (${u.name}) - not in guild`);
-            continue;
-        }
+        // فحص العضو بشكل فردي عشان نتجنب الـ Timeout
+        const member = await guild.members.fetch(u.user_id).catch(() => null);
         
-        if (process.env.MEMBER_ROLE_ID && !member.roles.cache.has(process.env.MEMBER_ROLE_ID)) {
-            console.log(`🚫 Radar: Skipping user ${u.user_id} (${u.name}) - missing member role`);
-            continue;
-        }
+        // لو العضو خرج من السيرفر، أو معندوش رول الأعضاء -> تجاهل
+        if (!member) continue;
+        if (process.env.MEMBER_ROLE_ID && !member.roles.cache.has(process.env.MEMBER_ROLE_ID)) continue;
 
-        const count = db.getReportCountInRange(
-            u.user_id,
-            startStr,
-            endStr
-        );
+        const count = db.getReportCountInRange(u.user_id, startStr, endStr);
         const entry = { ...u, reportCount: count };
         
         if (count === days) complete.push(entry);
