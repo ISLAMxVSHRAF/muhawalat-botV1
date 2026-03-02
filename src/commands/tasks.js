@@ -10,7 +10,10 @@ const {
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
-    ActionRowBuilder
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    StringSelectMenuBuilder
 } = require('discord.js');
 const CONFIG = require('../config');
 
@@ -180,7 +183,21 @@ async function taskListExecute(interaction, { db }) {
             .setDescription(list)
             .setTimestamp();
 
-        await interaction.editReply({ embeds: [embed] });
+        // Create dropdown menu for task selection
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('select_manage_task')
+            .setPlaceholder('اختر مهمة لإدارتها...')
+            .addOptions(
+                all.map(t => ({
+                    label: t.title.length > 100 ? t.title.substring(0, 100) + '...' : t.title,
+                    value: t.id.toString(),
+                    description: `${t.type === 'weekly' ? 'أسبوعية' : 'شهرية'} - ID: ${t.id}`
+                }))
+            );
+
+        const row = new ActionRowBuilder().addComponents(selectMenu);
+
+        await interaction.editReply({ embeds: [embed], components: [row] });
     } catch (e) {
         console.error('❌ task_list:', e);
         await interaction.editReply(ERR).catch(() => {});
@@ -434,8 +451,8 @@ async function taskEditDeadlineExecute(interaction, { db }) {
         }
 
         // Check if task exists (optional but good practice)
-        const existingTask = db.getTaskById(taskId);
-        if (!existingTask) {
+        const task = db.getTask(taskId);
+        if (!task) {
             return interaction.editReply('❌ المهمة المحددة غير موجودة.');
         }
 
@@ -447,6 +464,187 @@ async function taskEditDeadlineExecute(interaction, { db }) {
     } catch (e) {
         console.error('❌ task_edit_deadline:', e);
         await interaction.editReply(ERR).catch(() => {});
+    }
+}
+
+// ==========================================
+// Interactive Task Management Handlers
+// ==========================================
+
+async function handleTaskSelectMenu(interaction, { db }) {
+    try {
+        await interaction.deferUpdate();
+        
+        const taskId = parseInt(interaction.values[0], 10);
+        const task = db.getTask(taskId);
+        
+        if (!task) {
+            return interaction.update({
+                content: '❌ المهمة المحددة غير موجودة.',
+                embeds: [],
+                components: []
+            });
+        }
+
+        const lockTs = Math.floor(new Date(task.lock_at).getTime() / 1000);
+        const typeEmoji = task.type === 'weekly' ? '📅' : '🗓️';
+        const typeText = task.type === 'weekly' ? 'أسبوعية' : 'شهرية';
+        
+        const taskEmbed = new EmbedBuilder()
+            .setColor(CONFIG.COLORS.primary)
+            .setTitle(`${typeEmoji} تفاصيل المهمة #${task.id}`)
+            .setDescription(`**${task.title}**`)
+            .addFields(
+                {
+                    name: '📋 الوصف',
+                    value: task.description.length > 500 ? task.description.substring(0, 500) + '...' : task.description,
+                    inline: false
+                },
+                {
+                    name: '🏷️ النوع',
+                    value: typeText,
+                    inline: true
+                },
+                {
+                    name: '⏰ الموعد',
+                    value: `<t:${lockTs}:R>`,
+                    inline: true
+                },
+                {
+                    name: '🔗 الثريد',
+                    value: `<#${task.thread_id}>`,
+                    inline: true
+                }
+            )
+            .setTimestamp();
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`btn_task_edit_${task.id}`)
+                .setLabel('✏️ تعديل الموعد')
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId(`btn_task_delete_${task.id}`)
+                .setLabel('🗑️ حذف المهمة')
+                .setStyle(ButtonStyle.Danger)
+        );
+
+        await interaction.update({ embeds: [taskEmbed], components: [row] });
+    } catch (e) {
+        console.error('❌ handleTaskSelectMenu:', e);
+        await interaction.update({ content: ERR, embeds: [], components: [] }).catch(() => {});
+    }
+}
+
+async function handleTaskButtons(interaction, { db }) {
+    try {
+        await interaction.deferUpdate();
+        
+        if (interaction.customId.startsWith('btn_task_delete_')) {
+            const taskId = parseInt(interaction.customId.replace('btn_task_delete_', ''), 10);
+            
+            // Check if task exists before deletion
+            const task = db.getTask(taskId);
+            if (!task) {
+                return interaction.update({
+                    content: '❌ المهمة المحددة غير موجودة.',
+                    embeds: [],
+                    components: []
+                });
+            }
+            
+            // Delete task from database
+            try {
+                db.db.prepare('DELETE FROM tasks WHERE id = ?').run(taskId);
+                await interaction.update({
+                    content: '✅ تم حذف المهمة بنجاح.',
+                    embeds: [],
+                    components: []
+                });
+            } catch (e) {
+                console.error('❌ Delete task error:', e);
+                await interaction.update({
+                    content: '❌ فشل حذف المهمة.',
+                    embeds: [],
+                    components: []
+                });
+            }
+        }
+        
+        if (interaction.customId.startsWith('btn_task_edit_')) {
+            const taskId = parseInt(interaction.customId.replace('btn_task_edit_', ''), 10);
+            const task = db.getTask(taskId);
+            
+            if (!task) {
+                return interaction.update({
+                    content: '❌ المهمة المحددة غير موجودة.',
+                    embeds: [],
+                    components: []
+                });
+            }
+
+            const modal = new ModalBuilder()
+                .setCustomId(`modal_task_edit_${taskId}`)
+                .setTitle('تعديل موعد المهمة')
+                .addComponents(
+                    new ActionRowBuilder().addComponents(
+                        new TextInputBuilder()
+                            .setCustomId('end_date')
+                            .setLabel('تاريخ الانتهاء (DD-MM-YYYY)')
+                            .setStyle(TextInputStyle.Short)
+                            .setPlaceholder('DD-MM-YYYY')
+                            .setRequired(true)
+                    ),
+                    new ActionRowBuilder().addComponents(
+                        new TextInputBuilder()
+                            .setCustomId('end_time')
+                            .setLabel('ساعة الانتهاء (HH:mm)')
+                            .setStyle(TextInputStyle.Short)
+                            .setPlaceholder('HH:mm')
+                            .setRequired(true)
+                    )
+                );
+
+            await interaction.showModal(modal);
+        }
+    } catch (e) {
+        console.error('❌ handleTaskButtons:', e);
+        await interaction.update({ content: ERR, embeds: [], components: [] }).catch(() => {});
+    }
+}
+
+async function processTaskEditDeadlineModal(interaction, { db }) {
+    try {
+        await interaction.deferUpdate();
+        
+        const parts = interaction.customId.split('_');
+        const taskId = parseInt(parts[2], 10);
+        
+        const endDate = interaction.fields.getTextInputValue('end_date').trim();
+        const endTime = interaction.fields.getTextInputValue('end_time').trim();
+        
+        // Parse date and time
+        const lockAt = parseDateTime(endDate, endTime);
+        if (!lockAt) {
+            return interaction.update({
+                content: '❌ صيغة التاريخ أو الوقت غير صحيحة. استخدم: DD-MM-YYYY و HH:mm',
+                embeds: [],
+                components: []
+            });
+        }
+        
+        // Update task deadline in database
+        db.updateTask(taskId, { lock_at: lockAt.toISOString() });
+        
+        const lockTs = Math.floor(lockAt.getTime() / 1000);
+        await interaction.update({
+            content: `✅ تم تعديل الموعد بنجاح! الموعد الجديد: <t:${lockTs}:R>`,
+            embeds: [],
+            components: []
+        });
+    } catch (e) {
+        console.error('❌ processTaskEditDeadlineModal:', e);
+        await interaction.update({ content: ERR, embeds: [], components: [] }).catch(() => {});
     }
 }
 
@@ -472,5 +670,11 @@ async function handleTasks(interaction, deps) {
     }
 }
 
-module.exports = { handleTasks, processTaskCreateModal };
+module.exports = { 
+    handleTasks, 
+    processTaskCreateModal, 
+    handleTaskSelectMenu, 
+    handleTaskButtons, 
+    processTaskEditDeadlineModal 
+};
 

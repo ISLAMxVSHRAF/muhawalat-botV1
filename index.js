@@ -564,6 +564,8 @@ client.on('interactionCreate', async interaction => {
                 }
                 return interaction.reply({ content: '✅ تم تفعيل الإجازة لليوم. لن تتأثر سلسلة التزامك!', ephemeral: true });
             }
+            if (interaction.customId === 'select_manage_task') return handleTaskSelectMenu(interaction, { db, client });
+            if (interaction.customId.startsWith('btn_task_')) return handleTaskButtons(interaction, { db, client });
             if (interaction.customId === 'dashboard_menu') {
                 const choice = interaction.values[0];
                 if (choice === 'review_history') {
@@ -590,7 +592,6 @@ client.on('interactionCreate', async interaction => {
                     await updateDashboard(thread, ownerId, db, section);
                     return;
                 }
-
                 if (choice === 'stats')        return showStats(interaction, db);
                 if (choice === 'achievements') return showAchievements(interaction, db);
                 if (choice === 'yearly_goal')  return showYearlyGoalModal(interaction, db);
@@ -645,6 +646,7 @@ client.on('interactionCreate', async interaction => {
             if (id === 'modal_journal') return processJournalModal(interaction, db);
             if (id.startsWith('modal_schedule_add_')) return processScheduleAddModal(interaction, { automation });
             if (id.startsWith('modal_autorespond_add_')) return processAutorespondAddModal(interaction, { db });
+            if (id.startsWith('modal_task_edit_')) return processTaskEditDeadlineModal(interaction, { db, client });
         }
     } catch (error) {
         console.error('❌ Interaction Error:', error);

@@ -243,7 +243,10 @@ class AutomationSystem {
             console.log(`🔒 Task locked: #${t.id} ${t.title}`);
 
             try {
-                const missed = this.db.getMembersWhoMissedTask(t.id);
+                const allUsers = this.db.getAllUsers();
+                const completions = this.db.getTaskCompletions(t.id);
+                const completedUserIds = new Set(completions.map(c => c.user_id));
+                const missed = allUsers.filter(user => !completedUserIds.has(user.user_id));
                 const typeAr = t.type === 'weekly' ? 'الأسبوعية' : 'الشهرية';
                 for (const user of missed) {
                     const thread = await this.client.channels.fetch(user.thread_id).catch(() => null);
