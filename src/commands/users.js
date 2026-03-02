@@ -647,30 +647,23 @@ async function executeRadarRouting(interaction, { db, client }) {
 
 async function cleanDepartedExecute(interaction, { db, client }) {
     const fs = require('fs');
-    const path = require('path');
-    
-    // الوصول لمجلد الباك أب في السيرفر
-    const backupsDir = path.join(process.cwd(), 'backups');
-    
     try {
-        if (fs.existsSync(backupsDir)) {
-            // جلب كل ملفات الباك أب وترتيبها من الأحدث للأقدم
-            const backups = fs.readdirSync(backupsDir)
-                .filter(f => f.startsWith('muhawalat.db.backup'))
-                .sort().reverse();
-                
-            if (backups.length > 0) {
-                await interaction.reply({ 
-                    content: `📦 **النسخ الاحتياطية المتاحة للاسترجاع:**\n\`\`\`\n${backups.join('\n')}\n\`\`\``, 
-                    ephemeral: true 
-                });
-            } else {
-                await interaction.reply({ content: '⚠️ المجلد موجود بس مفيهوش أي ملفات باك أب.', ephemeral: true });
-            }
+        // فحص المسار الرئيسي للسيرفر
+        const files = fs.readdirSync(process.cwd());
+        const dbFiles = files.filter(f => f.includes('.db'));
+        
+        let msg = `📁 **الملفات الموجودة في السيرفر حالياً:**\n\`\`\`\n${files.join('  |  ')}\n\`\`\`\n`;
+        
+        // محاولة فحص مسار backups لو موجود بأي شكل
+        const bPath = require('path').join(process.cwd(), 'backups');
+        if (fs.existsSync(bPath)) {
+            msg += `\n📁 فولدر backups موجود جواه:\n\`\`\`\n${fs.readdirSync(bPath).join('\n')}\n\`\`\``;
         } else {
-            await interaction.reply({ content: '❌ مجلد backups مش موجود على السيرفر أصلاً!', ephemeral: true });
+            msg += `\n❌ فولدر backups مش موجود نهائياً.`;
         }
-    } catch (e) {
+
+        await interaction.reply({ content: msg, ephemeral: true });
+    } catch(e) {
         await interaction.reply({ content: `❌ Error: ${e.message}`, ephemeral: true });
     }
 }
