@@ -476,8 +476,6 @@ async function handleTaskSelectMenu(interaction, deps) {
     if (!db || typeof db.getTask !== 'function') return console.error('CRITICAL: Passed db object is invalid', db);
     
     try {
-        await interaction.deferUpdate();
-        
         const taskId = parseInt(interaction.values[0], 10);
         const task = db.getTask(taskId);
         
@@ -545,8 +543,6 @@ async function handleTaskButtons(interaction, deps) {
     if (!db || typeof db.getTask !== 'function') return console.error('CRITICAL: Passed db object is invalid', db);
     
     try {
-        await interaction.deferUpdate();
-        
         if (interaction.customId.startsWith('btn_task_delete_')) {
             const taskId = parseInt(interaction.customId.replace('btn_task_delete_', ''), 10);
             
@@ -625,8 +621,6 @@ async function processTaskEditDeadlineModal(interaction, deps) {
     if (!db || typeof db.getTask !== 'function') return console.error('CRITICAL: Passed db object is invalid', db);
     
     try {
-        await interaction.deferUpdate();
-        
         const parts = interaction.customId.split('_');
         const taskId = parseInt(parts[2], 10);
         
