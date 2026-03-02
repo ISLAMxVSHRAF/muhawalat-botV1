@@ -472,8 +472,8 @@ async function taskEditDeadlineExecute(interaction, { db }) {
 // ==========================================
 
 async function handleTaskSelectMenu(interaction, deps) {
-    const db = (deps && deps.db) ? deps.db : interaction.client.db;
-    if (!db) return interaction.reply({ content: '❌ خطأ: لم يتم العثور على قاعدة البيانات', ephemeral: true }).catch(() => {});
+    const db = deps.db;
+    if (!db || typeof db.getTask !== 'function') return console.error('CRITICAL: Passed db object is invalid', db);
     
     try {
         await interaction.deferUpdate();
@@ -540,8 +540,8 @@ async function handleTaskSelectMenu(interaction, deps) {
 }
 
 async function handleTaskButtons(interaction, deps) {
-    const db = (deps && deps.db) ? deps.db : interaction.client.db;
-    if (!db) return interaction.reply({ content: '❌ خطأ: لم يتم العثور على قاعدة البيانات', ephemeral: true }).catch(() => {});
+    const db = deps.db;
+    if (!db || typeof db.getTask !== 'function') return console.error('CRITICAL: Passed db object is invalid', db);
     
     try {
         await interaction.deferUpdate();
@@ -620,8 +620,8 @@ async function handleTaskButtons(interaction, deps) {
 }
 
 async function processTaskEditDeadlineModal(interaction, deps) {
-    const db = (deps && deps.db) ? deps.db : interaction.client.db;
-    if (!db) return interaction.reply({ content: '❌ خطأ: لم يتم العثور على قاعدة البيانات', ephemeral: true }).catch(() => {});
+    const db = deps.db;
+    if (!db || typeof db.getTask !== 'function') return console.error('CRITICAL: Passed db object is invalid', db);
     
     try {
         await interaction.deferUpdate();
