@@ -492,6 +492,7 @@ async function handleTaskSelectMenu(interaction, deps) {
         const lockTs = Math.floor(new Date(task.lock_at).getTime() / 1000);
         const typeEmoji = task.type === 'weekly' ? '📅' : '🗓️';
         const typeText = task.type === 'weekly' ? 'أسبوعية' : 'شهرية';
+        const safeDescription = task.description || 'لا يوجد وصف';
         
         const taskEmbed = new EmbedBuilder()
             .setColor(CONFIG.COLORS.primary)
@@ -500,7 +501,7 @@ async function handleTaskSelectMenu(interaction, deps) {
             .addFields(
                 {
                     name: '📋 الوصف',
-                    value: task.description.length > 500 ? task.description.substring(0, 500) + '...' : task.description,
+                    value: safeDescription.length > 500 ? safeDescription.substring(0, 500) + '...' : safeDescription,
                     inline: false
                 },
                 {
