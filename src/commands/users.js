@@ -651,12 +651,8 @@ async function cleanDepartedExecute(interaction, { db, client }) {
     try {
         const guild = interaction.guild;
         
-        // 1. حط الآي دي بتاع قناة مساحات الأعضاء هنا (عشان البوت ميبصش بره القناة دي أبداً)
+        // 1. الآي دي بتاع قناة مساحات الأعضاء
         const FORUM_ID = '1466133087896207380'; 
-        
-        if (FORUM_ID === '1466133087896207380') {
-            return interaction.editReply('❌ نسيت تحط الـ ID بتاع قناة المساحات في الكود!');
-        }
 
         const forumChannel = await guild.channels.fetch(FORUM_ID).catch(() => null);
         if (!forumChannel) {
