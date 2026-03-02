@@ -376,6 +376,15 @@ class MuhawalatDatabase {
             this.db.run(`CREATE TABLE IF NOT EXISTS custom_months (id INTEGER PRIMARY KEY AUTOINCREMENT, start_date TEXT NOT NULL, duration_days INTEGER NOT NULL DEFAULT 30, is_active INTEGER DEFAULT 1)`);
         } catch (e) { if (!e.message.includes('already exists')) console.warn('⚠️ Migration journals/custom_months:', e.message); }
 
+        // Fix: Add performance indexes for frequently queried columns
+        try {
+            this.db.run(`CREATE INDEX IF NOT EXISTS idx_daily_reports_date_user ON daily_reports(report_date, user_id);`);
+            this.db.run(`CREATE INDEX IF NOT EXISTS idx_task_completions_task_user ON task_completions(task_id, user_id);`);
+            console.log('✅ Database performance indexes created/verified');
+        } catch (e) {
+            console.warn('⚠️ Index creation warning:', e.message);
+        }
+
         try {
             this.db.run(`CREATE TABLE IF NOT EXISTS freezes_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -576,12 +585,37 @@ class MuhawalatDatabase {
     // ==========================================
 
     /**
+     * Gets logical Cairo date for daily reports - before 12PM counts as yesterday
+     * @returns {string} YYYY-MM-DD format
+     */
+    getCairoLogicalDate() {
+        try {
+            const TZ = process.env.TIMEZONE || 'Africa/Cairo';
+            const cairoTimeStr = new Date().toLocaleString("en-US", { timeZone: TZ });
+            const cairoTime = new Date(cairoTimeStr);
+            
+            // If before 12:00 PM Cairo time, use yesterday's date
+            if (cairoTime.getHours() < 12) {
+                cairoTime.setDate(cairoTime.getDate() - 1);
+            }
+            
+            const yyyy = cairoTime.getFullYear();
+            const mm = String(cairoTime.getMonth() + 1).padStart(2, '0');
+            const dd = String(cairoTime.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        } catch (error) {
+            console.error('❌ getCairoLogicalDate error:', error.message);
+            return new Date().toISOString().split('T')[0]; // Fallback to current date
+        }
+    }
+
+    /**
      * يسجل تقرير يومي للعضو مع النص وعدد الكلمات.
      * في حالة وجود تقرير لنفس اليوم، يتم تحديثه إذا كان النص الجديد أطول.
      */
     recordDailyReport(userId, threadId = null, content = null, wordCount = null, reportDate = null) {
         try {
-            const reportDateToUse = reportDate || new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+            const reportDateToUse = reportDate || this.getCairoLogicalDate(); // YYYY-MM-DD
             this.db.run(`
                 INSERT INTO daily_reports (user_id, report_date, thread_id, content, word_count)
                 VALUES (?,?,?,?,?)

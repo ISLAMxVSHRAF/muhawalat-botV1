@@ -622,7 +622,7 @@ async function processTaskEditDeadlineModal(interaction, deps) {
     
     try {
         const parts = interaction.customId.split('_');
-        const taskId = parseInt(parts[2], 10);
+        const taskId = parseInt(parts[3], 10); // Fix: modal_task_edit_${taskId} -> parts[3] contains taskId
         
         const endDate = interaction.fields.getTextInputValue('end_date').trim();
         const endTime = interaction.fields.getTextInputValue('end_time').trim();

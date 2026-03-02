@@ -352,9 +352,17 @@ async function segmentUsersByReports(db, days, guild) {
     const zero = [];
 
     for (const u of allUsers) {
-        // Filter out inactive/left members
+        // Fix: Strict filtering - ONLY users currently in server AND with member role
         const member = members.get(u.user_id);
-        if (!member || (process.env.MEMBER_ROLE_ID && !member.roles.cache.has(process.env.MEMBER_ROLE_ID))) continue;
+        if (!member) {
+            console.log(`👻 Radar: Skipping departed user ${u.user_id} (${u.name}) - not in guild`);
+            continue;
+        }
+        
+        if (process.env.MEMBER_ROLE_ID && !member.roles.cache.has(process.env.MEMBER_ROLE_ID)) {
+            console.log(`🚫 Radar: Skipping user ${u.user_id} (${u.name}) - missing member role`);
+            continue;
+        }
 
         const count = db.getReportCountInRange(
             u.user_id,
@@ -648,6 +656,104 @@ async function executeRadarRouting(interaction, { db, client }) {
 // Central handler for /admin users group
 // ==========================================
 
+// ==========================================
+// 🧹 CLEAN DEPARTED USERS - Admin cleanup command
+// ==========================================
+
+async function cleanDepartedExecute(interaction, { db, client }) {
+    await interaction.deferReply({ ephemeral: true });
+    
+    try {
+        const guild = client.guilds.cache.first();
+        if (!guild) {
+            return interaction.editReply('❌ لا يمكن الوصول إلى السيرفر.');
+        }
+
+        const allUsers = db.getAllUsers();
+        let departedCount = 0;
+        let invalidRoleCount = 0;
+        const departedUsers = [];
+        const invalidRoleUsers = [];
+
+        console.log(`🧹 Starting cleanup for ${allUsers.length} users...`);
+
+        for (const user of allUsers) {
+            try {
+                const member = await guild.members.fetch(user.user_id).catch(() => null);
+                
+                if (!member) {
+                    // User left the server
+                    departedCount++;
+                    departedUsers.push(user);
+                    console.log(`👻 Found departed user: ${user.user_id} (${user.name})`);
+                } else if (process.env.MEMBER_ROLE_ID && !member.roles.cache.has(process.env.MEMBER_ROLE_ID)) {
+                    // User lost member role
+                    invalidRoleCount++;
+                    invalidRoleUsers.push(user);
+                    console.log(`🚫 Found invalid role user: ${user.user_id} (${user.name})`);
+                }
+            } catch (error) {
+                console.error(`❌ Error checking user ${user.user_id}:`, error.message);
+            }
+        }
+
+        // Remove departed users from database
+        for (const user of departedUsers) {
+            try {
+                db.db.run('DELETE FROM users WHERE user_id = ?', [user.user_id]);
+                db.db.run('DELETE FROM habits WHERE user_id = ?', [user.user_id]);
+                db.db.run('DELETE FROM stats WHERE user_id = ?', [user.user_id]);
+                console.log(`🗑️ Removed departed user: ${user.user_id}`);
+            } catch (error) {
+                console.error(`❌ Error removing departed user ${user.user_id}:`, error.message);
+            }
+        }
+
+        // Remove users without member role (optional - keep data but mark as inactive)
+        for (const user of invalidRoleUsers) {
+            try {
+                // Option 1: Delete completely (uncomment if preferred)
+                // db.db.run('DELETE FROM users WHERE user_id = ?', [user.user_id]);
+                // db.db.run('DELETE FROM habits WHERE user_id = ?', [user.user_id]);
+                // db.db.run('DELETE FROM stats WHERE user_id = ?', [user.user_id]);
+                
+                // Option 2: Mark as inactive (safer)
+                db.db.run('UPDATE users SET thread_id = NULL WHERE user_id = ?', [user.user_id]);
+                console.log(`⏸️ Deactivated invalid role user: ${user.user_id}`);
+            } catch (error) {
+                console.error(`❌ Error deactivating user ${user.user_id}:`, error.message);
+            }
+        }
+
+        db.save();
+
+        const embed = new EmbedBuilder()
+            .setColor(CONFIG.COLORS.primary)
+            .setTitle('🧹 تنظيف المستخدمين المغادرين')
+            .setDescription(`تم فحص ${allUsers.length} مستخدم في قاعدة البيانات.`)
+            .addFields(
+                {
+                    name: '👻 المستخدمون الذين غادروا السيرفر',
+                    value: `${departedCount} مستخدم (تم حذفهم بالكامل)`,
+                    inline: false
+                },
+                {
+                    name: '🚫 المستخدمون بدون دور العضوية',
+                    value: `${invalidRoleCount} مستخدم (تم إلغاء تفعيلهم)`,
+                    inline: false
+                }
+            )
+            .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+        console.log(`✅ Cleanup completed: ${departedCount} departed, ${invalidRoleCount} invalid role users processed`);
+
+    } catch (error) {
+        console.error('❌ cleanDepartedExecute error:', error);
+        await interaction.editReply('❌ حدث خطأ أثناء عملية التنظيف.');
+    }
+}
+
 async function handleUsers(interaction, deps) {
     const sub = interaction.options.getSubcommand();
     switch (sub) {
@@ -667,6 +773,8 @@ async function handleUsers(interaction, deps) {
             return timeoutListExecute(interaction, deps);
         case 'radar':
             return radarExecute(interaction, deps);
+        case 'clean_departed':
+            return cleanDepartedExecute(interaction, deps);
         default:
             throw new Error(`Unknown users subcommand: ${sub}`);
     }

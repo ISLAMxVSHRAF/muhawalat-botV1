@@ -24,7 +24,35 @@ class AutomationSystem {
         this.client = client;
         this.db = db;
         this.jobs = [];
+        this.guild = null; // Cache guild reference
         this._schedulerJobs = new Map();
+    }
+
+    /**
+     * Validates if user is still in guild and has member role
+     * @param {string} userId - Discord user ID
+     * @returns {Promise<boolean>} - True if user is valid member
+     */
+    async validateUserMembership(userId) {
+        try {
+            if (!this.guild) {
+                this.guild = this.client.guilds.cache.first();
+            }
+            if (!this.guild) return false;
+
+            const member = await this.guild.members.fetch(userId).catch(() => null);
+            if (!member) return false;
+
+            // Check member role if configured
+            if (process.env.MEMBER_ROLE_ID && !member.roles.cache.has(process.env.MEMBER_ROLE_ID)) {
+                return false;
+            }
+
+            return true;
+        } catch (error) {
+            console.error(`❌ validateUserMembership error for ${userId}:`, error.message);
+            return false;
+        }
     }
 
     // ==========================================
@@ -65,6 +93,13 @@ class AutomationSystem {
 
         for (const user of users) {
             try {
+                // Fix: Validate user is still in guild and has member role
+                const isValidMember = await this.validateUserMembership(user.user_id);
+                if (!isValidMember) {
+                    console.log(`⏭️ Morning: Skipping departed user ${user.user_id} (${user.name})`);
+                    continue;
+                }
+
                 const thread = await this.client.channels.fetch(user.thread_id).catch(() => null);
                 if (!thread) continue;
 
@@ -198,16 +233,8 @@ class AutomationSystem {
 
     async lockDailyPost() {
         try {
-            // 1. Get precise Cairo time for yesterday
-            const TZ = process.env.TIMEZONE || 'Africa/Cairo';
-            const cairoTimeStr = new Date().toLocaleString("en-US", { timeZone: TZ });
-            const yesterday = new Date(cairoTimeStr);
-            yesterday.setDate(yesterday.getDate() - 1);
-
-            const yyyy = yesterday.getFullYear();
-            const mm = String(yesterday.getMonth() + 1).padStart(2, '0');
-            const dd = String(yesterday.getDate()).padStart(2, '0');
-            const isoDate = `${yyyy}-${mm}-${dd}`;
+            // 1. Get logical Cairo date for yesterday (before 12PM counts as previous day)
+            const isoDate = this.db.getCairoLogicalDate(); // Fix: Use logical date for consistency
 
             console.log(`🔒 Attempting to lock daily post for: ${isoDate}`);
 
@@ -272,6 +299,13 @@ class AutomationSystem {
 
         for (const user of users) {
             try {
+                // Fix: Validate user is still in guild and has member role
+                const isValidMember = await this.validateUserMembership(user.user_id);
+                if (!isValidMember) {
+                    console.log(`⏭️ Evening: Skipping departed user ${user.user_id} (${user.name})`);
+                    continue;
+                }
+
                 const thread = await this.client.channels.fetch(user.thread_id).catch(() => null);
                 if (!thread) continue;
 
