@@ -419,6 +419,11 @@ const data = new SlashCommandBuilder()
                             .setRequired(false)
                     )
             )
+            .addSubcommand(sub =>
+                sub
+                    .setName('clean_departed')
+                    .setDescription('فحص وتنظيف الداتابيز من الأعضاء اللي خرجوا أو فقدوا الرول')
+            )
     )
 
     // System group
