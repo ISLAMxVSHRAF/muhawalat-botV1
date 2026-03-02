@@ -646,25 +646,70 @@ async function executeRadarRouting(interaction, { db, client }) {
 // ==========================================
 
 async function cleanDepartedExecute(interaction, { db, client }) {
-    const fs = require('fs');
+    await interaction.deferReply({ ephemeral: true });
+    
     try {
-        // فحص المسار الرئيسي للسيرفر
-        const files = fs.readdirSync(process.cwd());
-        const dbFiles = files.filter(f => f.includes('.db'));
+        const guild = interaction.guild;
         
-        let msg = `📁 **الملفات الموجودة في السيرفر حالياً:**\n\`\`\`\n${files.join('  |  ')}\n\`\`\`\n`;
+        // 1. نجيب كل الأعضاء اللي مساحاتهم اتفصلت من الداتابيز
+        const allUsers = db.getAllUsers();
+        const lostUsers = allUsers.filter(u => !u.thread_id);
         
-        // محاولة فحص مسار backups لو موجود بأي شكل
-        const bPath = require('path').join(process.cwd(), 'backups');
-        if (fs.existsSync(bPath)) {
-            msg += `\n📁 فولدر backups موجود جواه:\n\`\`\`\n${fs.readdirSync(bPath).join('\n')}\n\`\`\``;
-        } else {
-            msg += `\n❌ فولدر backups مش موجود نهائياً.`;
+        if (lostUsers.length === 0) {
+            return interaction.editReply('✅ كل الأعضاء مربوطين بمساحاتهم فعلاً! مفيش مساحات ضايعة.');
         }
 
-        await interaction.reply({ content: msg, ephemeral: true });
-    } catch(e) {
-        await interaction.reply({ content: `❌ Error: ${e.message}`, ephemeral: true });
+        // 2. نجيب كل المساحات (Threads) اللي شغالة في السيرفر
+        const { threads } = await guild.channels.fetchActiveThreads();
+        
+        let recoveredCount = 0;
+        let log = [];
+
+        // 3. عملية البحث والربط التلقائي
+        for (const user of lostUsers) {
+            let foundThread = null;
+            
+            // محاولة 1: البحث بالاسم (لو اسم المساحة فيه اسم العضو)
+            for (const [id, thread] of threads) {
+                if (thread.name.includes(user.name)) {
+                    foundThread = thread;
+                    break;
+                }
+            }
+            
+            // محاولة 2: البحث بالأعضاء (لو العضو متضاف جوه المساحة)
+            if (!foundThread) {
+                for (const [id, thread] of threads) {
+                    try {
+                        const hasMember = await thread.members.fetch(user.user_id).catch(() => null);
+                        if (hasMember) {
+                            foundThread = thread;
+                            break;
+                        }
+                    } catch(e) {}
+                }
+            }
+
+            // لو لقينا المساحة، نرجع نربطها في الداتابيز فوراً
+            if (foundThread) {
+                db.db.run('UPDATE users SET thread_id = ? WHERE user_id = ?', [foundThread.id, user.user_id]);
+                recoveredCount++;
+                log.push(`✅ تم ربط ${user.name} ➡️ بمساحة <#${foundThread.id}>`);
+            } else {
+                log.push(`❌ لم أتمكن من العثور على مساحة: ${user.name}`);
+            }
+        }
+        
+        // حفظ الداتابيز بعد التعديل
+        db.save();
+        
+        // عرض التقرير النهائي
+        const resultMsg = `🦸‍♂️ **خطة الإنقاذ اكتملت!**\nتم استرجاع وربط **${recoveredCount}** مساحة بنجاح.\n\n${log.join('\n')}`.substring(0, 1900);
+        
+        await interaction.editReply(resultMsg);
+    } catch (e) {
+        console.error('❌ Rescue Error:', e);
+        await interaction.editReply(`❌ حدث خطأ: ${e.message}`);
     }
 }
 
