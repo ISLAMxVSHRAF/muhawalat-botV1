@@ -1217,7 +1217,11 @@ class MuhawalatDatabase {
 
     getTask(taskId) {
         try {
-            return this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId);
+            const s = this.db.prepare('SELECT * FROM tasks WHERE id = ?');
+            s.bind([taskId]);
+            const r = s.step() ? s.getAsObject() : null;
+            s.free();
+            return r;
         } catch (error) {
             console.error(`Error getting task ${taskId}:`, error);
             return null;
@@ -1226,10 +1230,12 @@ class MuhawalatDatabase {
 
     deleteTask(taskId) {
         try {
-            return this.db.prepare('DELETE FROM tasks WHERE id = ?').run(taskId);
+            this.db.run('DELETE FROM tasks WHERE id = ?', [taskId]);
+            this.save();
+            return true;
         } catch (error) {
             console.error(`Error deleting task ${taskId}:`, error);
-            return null;
+            return false;
         }
     }
 
