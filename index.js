@@ -32,7 +32,7 @@ const {
 } = require('./src/commands/system');
 const { handleAutoResponse, processScheduleAddModal, processAutorespondAddModal } = require('./src/commands/automation_cmds');
 const { handleDailyReportButton } = require('./src/commands/reports');
-const { processTaskCreateModal } = require('./src/commands/tasks');
+const { processTaskCreateModal, handleTaskSelectMenu, handleTaskButtons, processTaskEditDeadlineModal } = require('./src/commands/tasks');
 const {
     handleRadarNudgeButton,
     processRadarNudgeModal,
