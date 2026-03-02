@@ -334,27 +334,35 @@ function buildDateRange(days) {
     return { startStr: toISO(start), endStr: toISO(end) };
 }
 
-function segmentUsersByReports(db, days) {
+async function segmentUsersByReports(db, days, guild) {
     const { startStr, endStr } = buildDateRange(days);
     const allUsers = db.getAllUsers();
+    const members = await guild.members.fetch();
 
     const complete = [];
-    const partial = [];
+    const good = [];
+    const danger = [];
     const zero = [];
 
     for (const u of allUsers) {
+        // Filter out inactive/left members
+        const member = members.get(u.user_id);
+        if (!member || (process.env.MEMBER_ROLE_ID && !member.roles.cache.has(process.env.MEMBER_ROLE_ID))) continue;
+
         const count = db.getReportCountInRange(
             u.user_id,
             startStr,
             endStr
         );
         const entry = { ...u, reportCount: count };
-        if (count >= days) complete.push(entry);
-        else if (count > 0) partial.push(entry);
+        
+        if (count === days) complete.push(entry);
+        else if (count > Math.floor(days / 2) && count < days) good.push(entry);
+        else if (count > 0 && count <= Math.floor(days / 2)) danger.push(entry);
         else zero.push(entry);
     }
 
-    return { complete, partial, zero, startStr, endStr };
+    return { complete, good, danger, zero, startStr, endStr };
 }
 
 async function radarExecute(interaction, { db }) {
@@ -363,9 +371,10 @@ async function radarExecute(interaction, { db }) {
         const daysInput = interaction.options.getInteger('days');
         const days = daysInput && daysInput > 0 ? daysInput : 7;
 
-        const { complete, partial, zero, startStr, endStr } = segmentUsersByReports(
+        const { complete, good, danger, zero, startStr, endStr } = await segmentUsersByReports(
             db,
-            days
+            days,
+            interaction.guild
         );
 
         const rangeLabel =
@@ -381,7 +390,7 @@ async function radarExecute(interaction, { db }) {
                       .join(' · ')
                 : '—';
 
-        const formatPartial = arr =>
+        const formatWithCounts = arr =>
             arr.length
                 ? arr
                       .slice(0, 30)
@@ -401,17 +410,22 @@ async function radarExecute(interaction, { db }) {
             )
             .addFields(
                 {
-                    name: `🟢 مكتمل (${complete.length})`,
+                    name: `🟢 **ملتزم تماماً** (${complete.length})`,
                     value: formatList(complete),
                     inline: false
                 },
                 {
-                    name: `🟡 متقطع (${partial.length})`,
-                    value: formatPartial(partial),
+                    name: `� **أداء جيد** (${good.length})`,
+                    value: formatWithCounts(good),
                     inline: false
                 },
                 {
-                    name: `🔴 غير متفاعل (${zero.length})`,
+                    name: `🟡 **في خطر** (${danger.length})`,
+                    value: formatWithCounts(danger),
+                    inline: false
+                },
+                {
+                    name: `🔴 **مختفي** (${zero.length})`,
                     value: formatList(zero),
                     inline: false
                 }
@@ -420,12 +434,16 @@ async function radarExecute(interaction, { db }) {
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId(`btn_radar_nudge_zero_${days}`)
-                .setLabel('🔔 تنبيه (غير متفاعل)')
+                .setLabel('🔔 المختفي')
                 .setStyle(ButtonStyle.Danger),
             new ButtonBuilder()
-                .setCustomId(`btn_radar_nudge_partial_${days}`)
-                .setLabel('🔔 تنبيه (المتقطع)')
-                .setStyle(ButtonStyle.Primary)
+                .setCustomId(`btn_radar_nudge_danger_${days}`)
+                .setLabel('🔔 في خطر')
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId(`btn_radar_nudge_good_${days}`)
+                .setLabel('🌟 تشجيع الجيد')
+                .setStyle(ButtonStyle.Success)
         );
 
         await interaction.editReply({
@@ -444,7 +462,7 @@ const _radarNudgeCache = new Map();
 async function handleRadarNudgeButton(interaction) {
     try {
         const parts = interaction.customId.split('_'); // ['btn','radar','nudge',type,days]
-        const type = parts[3]; // zero | partial
+        const type = parts[3]; // zero | danger | good
         const days = parseInt(parts[4], 10) || 7;
 
         const modal = new ModalBuilder()
@@ -454,7 +472,9 @@ async function handleRadarNudgeButton(interaction) {
         const defaultText =
             type === 'zero'
                 ? 'مفتقدينك في التقرير اليومي الفترة اللي فاتت، مستنيين نشوف عودتك قريبًا 🌱'
-                : 'عاش على محاولاتك، محتاجين استمرارية وانتظام أكتر في التقارير الفترة الجاية 💪';
+                : type === 'danger'
+                ? 'خدنا بالنا إن تقاريرك متقطعة الفترة دي، شد حيلك والتزم معانا أكتر! 💪'
+                : 'عاش جداً على مجهودك الأيام اللي فاتت! كمل على نفس المستوى وإحنا فخورين بيك 🌟';
 
         const input = new TextInputBuilder()
             .setCustomId('radar_message')
@@ -519,7 +539,7 @@ async function executeRadarRouting(interaction, { db, client }) {
 
         const parts = interaction.customId.split('_'); // btn_radar_send_method_type_days
         const method = parts[3]; // dm | thread | both
-        const type = parts[4]; // zero | partial
+        const type = parts[4]; // zero | danger | good
         const days = parseInt(parts[5], 10) || 7;
 
         const cached = _radarNudgeCache.get(interaction.user.id);
@@ -530,12 +550,14 @@ async function executeRadarRouting(interaction, { db, client }) {
         }
 
         const { message } = cached;
-        const { complete, partial, zero } = segmentUsersByReports(db, days);
+        const { complete, good, danger, zero } = await segmentUsersByReports(db, days, interaction.guild);
 
         const targets =
             type === 'zero'
                 ? zero
-                : partial;
+                : type === 'danger'
+                ? danger
+                : good;
 
         if (!targets.length) {
             return interaction.editReply(
@@ -543,46 +565,44 @@ async function executeRadarRouting(interaction, { db, client }) {
             );
         }
 
+        // Filter members again for safe sending
+        const members = await interaction.guild.members.fetch();
+        const validTargets = targets.filter(user => {
+            const member = members.get(user.user_id);
+            return member && (!process.env.MEMBER_ROLE_ID || member.roles.cache.has(process.env.MEMBER_ROLE_ID));
+        });
+
+        if (!validTargets.length) {
+            return interaction.editReply(
+                'ℹ️ لا يوجد أعضاء صالحين للإرسال بعد التحقق من العضوية.'
+            );
+        }
+
         let dmSent = 0;
         let threadSent = 0;
         let failed = 0;
 
-        for (const u of targets) {
-            const userId = u.user_id;
-            const userTag = `<@${userId}>`;
-
-            const finalThreadMessage = `${userTag} ${message}`;
-
-            const canDM = method === 'dm' || method === 'both';
-            const canThread = method === 'thread' || method === 'both';
-
+        for (const user of validTargets) {
             let dmOk = false;
             let threadOk = false;
 
-            if (canDM) {
+            if (method === 'dm' || method === 'both') {
                 try {
-                    const userObj = await client.users
-                        .fetch(userId)
-                        .catch(() => null);
-                    if (userObj) {
-                        await userObj.send(message);
-                        dmOk = true;
-                        dmSent++;
-                    }
+                    const dmUser = await client.users.fetch(user.user_id);
+                    await dmUser.send(message);
+                    dmOk = true;
+                    dmSent++;
                 } catch (_) {
-                    dmOk = false;
+                    // DM failed
                 }
             }
 
-            if (canThread || (!dmOk && method === 'dm')) {
-                const threadId = u.thread_id;
-                if (threadId) {
+            if (method === 'thread' || method === 'both') {
+                if (user.thread_id) {
                     try {
-                        const thread = await client.channels
-                            .fetch(threadId)
-                            .catch(() => null);
+                        const thread = await client.channels.fetch(user.thread_id);
                         if (thread) {
-                            await thread.send(finalThreadMessage);
+                            await thread.send(message);
                             threadOk = true;
                             threadSent++;
                         }
@@ -600,7 +620,7 @@ async function executeRadarRouting(interaction, { db, client }) {
         }
 
         await interaction.editReply(
-            `✅ تم إرسال تنبيه الرادار لفئة **${type === 'zero' ? 'غير متفاعل' : 'المتقطع'}** خلال آخر ${days} يوم.\n` +
+            `✅ تم إرسال تنبيه الرادار لفئة **${type === 'zero' ? 'المختفي' : type === 'danger' ? 'في خطر' : 'أداء جيد'}** خلال آخر ${days} يوم.\n` +
                 `• DM: ${dmSent}\n` +
                 `• Threads: ${threadSent}\n` +
                 `• فشل الإرسال: ${failed}`

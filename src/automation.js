@@ -1007,7 +1007,13 @@ class AutomationSystem {
                 const twoHoursFromNow = now + (2 * 60 * 60 * 1000);
                 const threeAndHalfHoursFromNow = now + (3.5 * 60 * 60 * 1000);
                 
-                const activeTasks = this.db.getAllActiveTasks().filter(task => {
+                const guildId = process.env.GUILD_ID || this.client.guilds.cache.first()?.id;
+                if (!guildId) return;
+                const weeklyTasks = this.db.getActiveTasks(guildId, 'weekly') || [];
+                const monthlyTasks = this.db.getActiveTasks(guildId, 'monthly') || [];
+                const tasks = [...weeklyTasks, ...monthlyTasks];
+                
+                const activeTasks = tasks.filter(task => {
                     const lockAt = new Date(task.lock_at).getTime();
                     return lockAt >= twoHoursFromNow && lockAt <= threeAndHalfHoursFromNow;
                 });
