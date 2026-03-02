@@ -651,60 +651,62 @@ async function cleanDepartedExecute(interaction, { db, client }) {
     try {
         const guild = interaction.guild;
         
-        // 1. نجيب كل الأعضاء اللي مساحاتهم اتفصلت من الداتابيز
-        const allUsers = db.getAllUsers();
-        const lostUsers = allUsers.filter(u => !u.thread_id);
+        // 1. حط الآي دي بتاع قناة مساحات الأعضاء هنا (عشان البوت ميبصش بره القناة دي أبداً)
+        const FORUM_ID = '1466133087896207380'; 
         
-        if (lostUsers.length === 0) {
-            return interaction.editReply('✅ كل الأعضاء مربوطين بمساحاتهم فعلاً! مفيش مساحات ضايعة.');
+        if (FORUM_ID === '1466133087896207380') {
+            return interaction.editReply('❌ نسيت تحط الـ ID بتاع قناة المساحات في الكود!');
         }
 
-        // 2. نجيب كل المساحات (Threads) اللي شغالة في السيرفر
-        const { threads } = await guild.channels.fetchActiveThreads();
+        const forumChannel = await guild.channels.fetch(FORUM_ID).catch(() => null);
+        if (!forumChannel) {
+            return interaction.editReply('❌ مقدرتش أوصل لقناة المساحات، اتأكد إن الـ ID صح.');
+        }
+
+        console.log(`🦸‍♂️ [Fix] Resetting all wrong threads...`);
+        const allUsers = db.getAllUsers();
         
+        // مسح كل الربط الغلط اللي حصل من شوية وتصفيرهم
+        for (const u of allUsers) {
+            db.db.run('UPDATE users SET thread_id = NULL WHERE user_id = ?', [u.user_id]);
+        }
+
+        console.log(`🦸‍♂️ [Fix] Fetching threads from specific forum: ${forumChannel.name}`);
+        // جلب المساحات من جوه قسم مساحات الأعضاء فقط!
+        const { threads } = await forumChannel.threads.fetchActive();
+        
+        console.log(`🦸‍♂️ [Fix] Caching members for ${threads.size} threads...`);
+        for (const [id, thread] of threads) {
+            try { await thread.members.fetch(); } catch(e) {}
+        }
+
         let recoveredCount = 0;
         let log = [];
 
-        // 3. عملية البحث والربط التلقائي
-        for (const user of lostUsers) {
+        for (const user of allUsers) {
             let foundThread = null;
             
-            // محاولة 1: البحث بالاسم (لو اسم المساحة فيه اسم العضو)
+            // البحث جوه مساحات الأعضاء الصحيحة فقط
             for (const [id, thread] of threads) {
-                if (thread.name.includes(user.name)) {
+                if (thread.name.includes(user.name) || thread.members.cache.has(user.user_id)) {
                     foundThread = thread;
                     break;
                 }
             }
-            
-            // محاولة 2: البحث بالأعضاء (لو العضو متضاف جوه المساحة)
-            if (!foundThread) {
-                for (const [id, thread] of threads) {
-                    try {
-                        const hasMember = await thread.members.fetch(user.user_id).catch(() => null);
-                        if (hasMember) {
-                            foundThread = thread;
-                            break;
-                        }
-                    } catch(e) {}
-                }
-            }
 
-            // لو لقينا المساحة، نرجع نربطها في الداتابيز فوراً
             if (foundThread) {
                 db.db.run('UPDATE users SET thread_id = ? WHERE user_id = ?', [foundThread.id, user.user_id]);
                 recoveredCount++;
                 log.push(`✅ تم ربط ${user.name} ➡️ بمساحة <#${foundThread.id}>`);
             } else {
-                log.push(`❌ لم أتمكن من العثور على مساحة: ${user.name}`);
+                log.push(`❌ لم أجد مساحة لـ ${user.name}`);
             }
         }
         
-        // حفظ الداتابيز بعد التعديل
+        // حفظ الداتابيز بعد التعديل الصح
         db.save();
         
-        // عرض التقرير النهائي
-        const resultMsg = `🦸‍♂️ **خطة الإنقاذ اكتملت!**\nتم استرجاع وربط **${recoveredCount}** مساحة بنجاح.\n\n${log.join('\n')}`.substring(0, 1900);
+        const resultMsg = `🛠️ **تم تصحيح الكارثة!**\nتم مسح الربط الغلط، وربط **${recoveredCount}** مساحة صحيحة من داخل قسم المساحات فقط.\n\n${log.join('\n')}`.substring(0, 1900);
         
         await interaction.editReply(resultMsg);
     } catch (e) {
