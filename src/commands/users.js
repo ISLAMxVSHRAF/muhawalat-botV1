@@ -664,82 +664,66 @@ async function cleanDepartedExecute(interaction, { db, client }) {
             return interaction.editReply('✅ كل الأعضاء مربوطين بمساحاتهم بنجاح!');
         }
 
-        console.log(`🔍 [ID Matcher] Looking for ${lostUsers.length} missing users by Exact ID...`);
+        console.log(`🎯 [Pin & Mention Scan] Missing users: ${lostUsers.length}`);
         
-        // جلب كل المساحات (النشطة والمؤرشفة)
         const activeData = await forumChannel.threads.fetchActive();
-        const archivedData = await forumChannel.threads.fetchArchived();
+        const archivedData = await forumChannel.threads.fetchArchived({ limit: 100 });
         const allThreads = [...activeData.threads.values(), ...archivedData.threads.values()];
 
         let recoveredCount = 0;
         let log = [];
 
-        // المرور على كل مساحة واستخراج الـ ID بتاع صاحبها
-        for (const thread of allThreads) {
-            // عشان المساحة لسه مش مربوطة بحد
-            if (!allUsers.some(u => u.thread_id === thread.id)) {
-                let ownerIdFound = null;
+        for (const lostUser of lostUsers) {
+            let foundThread = null;
+            const uid = lostUser.user_id;
 
-                // 1. فحص رسالة الترحيب الأولى (اللي فيها المنشن بتاع العضو)
+            for (const thread of allThreads) {
+                // تخطي المساحات اللي اتربطت بحد تاني
+                if (allUsers.some(u => u.thread_id === thread.id && u.user_id !== uid)) continue;
+
+                let isMatch = false;
+
                 try {
-                    // رسالة الترحيب دايماً الـ ID بتاعها بيكون نفس الـ ID بتاع الثريد نفسه
-                    const starterMsg = await thread.messages.fetch(thread.id).catch(() => null);
-                    if (starterMsg) {
-                        // لو لقينا منشن لأي شخص في رسالة الترحيب
-                        const mentionedUsers = starterMsg.mentions.users;
-                        for (const [userId, userObj] of mentionedUsers) {
-                            if (!userObj.bot) {
-                                ownerIdFound = userId;
-                                break;
-                            }
+                    // 1. فحص الرسائل المثبتة (الداش بورد)
+                    const pinnedMsgs = await thread.messages.fetchPinned();
+                    for (const [mId, msg] of pinnedMsgs) {
+                        if (msg.mentions.has(uid) || msg.content.includes(uid) || JSON.stringify(msg.embeds).includes(uid)) {
+                            isMatch = true; break;
                         }
-                        
-                        // لو ملقيناش بالمنشن الصريح، نبحث في النص عن الـ ID
-                        if (!ownerIdFound) {
-                            for (const lost of lostUsers) {
-                                if (starterMsg.content.includes(lost.user_id)) {
-                                    ownerIdFound = lost.user_id;
-                                    break;
-                                }
-                            }
+                    }
+
+                    // 2. فحص رسالة البداية (لو الداش بورد مش متثبتة)
+                    if (!isMatch) {
+                        const starter = await thread.fetchStarterMessage().catch(()=>null);
+                        if (starter && (starter.mentions.has(uid) || starter.content.includes(uid) || JSON.stringify(starter.embeds).includes(uid))) {
+                            isMatch = true;
                         }
                     }
                 } catch(e) {}
 
-                // 2. لو ملقيناش في الرسالة، نفحص قائمة أعضاء الثريد نفسهم
-                if (!ownerIdFound) {
-                    try {
-                        const threadMembers = await thread.members.fetch();
-                        for (const [memberId, threadMember] of threadMembers) {
-                            // لو العضو ده موجود في قائمة الضايعين
-                            if (lostUsers.some(u => u.user_id === memberId)) {
-                                ownerIdFound = memberId;
-                                break;
-                            }
-                        }
-                    } catch(e) {}
+                if (isMatch) {
+                    foundThread = thread;
+                    break;
                 }
+            }
 
-                // لو لقينا الـ ID بتاع صاحب المساحة، نربطه فوراً
-                if (ownerIdFound) {
-                    const lostUser = lostUsers.find(u => u.user_id === ownerIdFound);
-                    if (lostUser) {
-                        db.db.run('UPDATE users SET thread_id = ? WHERE user_id = ?', [thread.id, lostUser.user_id]);
-                        lostUser.thread_id = thread.id; // تحديث في الذاكرة عشان ميربطوش مرتين
-                        recoveredCount++;
-                        log.push(`✅ تم ربط ${lostUser.name} ➡️ <#${thread.id}> (بالـ ID)`);
-                    }
-                }
+            if (foundThread) {
+                db.db.run('UPDATE users SET thread_id = ? WHERE user_id = ?', [foundThread.id, uid]);
+                lostUser.thread_id = foundThread.id;
+                recoveredCount++;
+                log.push(`✅ ${lostUser.name} ➡️ <#${foundThread.id}>`);
+            } else {
+                log.push(`❌ ${lostUser.name} (فعلاً ملوش مساحة)`);
             }
         }
         
         db.save();
         
-        const resultMsg = `🔍 **تطابق الـ ID اكتمل!**\nتم ربط **${recoveredCount}** مساحة باستخدام أرقام الـ ID.\n\n${log.join('\n')}`.substring(0, 1900);
+        const resultMsg = `🎯 **الفحص النهائي للداش بورد اكتمل!**\nتم ربط **${recoveredCount}** مساحة.\n\n${log.join('\n')}`.substring(0, 1900);
         await interaction.editReply(resultMsg);
         
     } catch (e) {
-        console.error('❌ ID Matcher Error:', e);
+        console.error('❌ Final Scan Error:', e);
         await interaction.editReply(`❌ حدث خطأ: ${e.message}`);
     }
 }
