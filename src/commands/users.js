@@ -5,7 +5,8 @@ const {
     ButtonStyle,
     ModalBuilder,
     TextInputBuilder,
-    TextInputStyle
+    TextInputStyle,
+    Collection
 } = require('discord.js');
 const CONFIG = require('../config');
 
@@ -337,7 +338,13 @@ function buildDateRange(days) {
 async function segmentUsersByReports(db, days, guild) {
     const { startStr, endStr } = buildDateRange(days);
     const allUsers = db.getAllUsers();
-    const members = await guild.members.fetch();
+    let members;
+    try {
+        members = await guild.members.fetch({ time: 120000 }); // wait up to 2 minutes
+    } catch (err) {
+        console.log('Radar member fetch timed out gracefully.');
+        members = new Collection(); // fallback to empty collection
+    }
 
     const complete = [];
     const good = [];
@@ -566,7 +573,13 @@ async function executeRadarRouting(interaction, { db, client }) {
         }
 
         // Filter members again for safe sending
-        const members = await interaction.guild.members.fetch();
+        let members;
+        try {
+            members = await interaction.guild.members.fetch({ time: 120000 }); // wait up to 2 minutes
+        } catch (err) {
+            console.log('Radar member fetch timed out gracefully.');
+            members = new Collection(); // fallback to empty collection
+        }
         const validTargets = targets.filter(user => {
             const member = members.get(user.user_id);
             return member && (!process.env.MEMBER_ROLE_ID || member.roles.cache.has(process.env.MEMBER_ROLE_ID));
