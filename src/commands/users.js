@@ -646,85 +646,29 @@ async function executeRadarRouting(interaction, { db, client }) {
 // ==========================================
 
 async function cleanDepartedExecute(interaction, { db, client }) {
-    await interaction.deferReply({ ephemeral: true });
-    
+    const fs = require('fs');
+    const path = require('path');
     try {
-        const guild = interaction.guild;
-        const FORUM_ID = '1466133087896207380'; 
-
-        const forumChannel = await guild.channels.fetch(FORUM_ID).catch(() => null);
-        if (!forumChannel) {
-            return interaction.editReply('❌ مقدرتش أوصل لقناة المساحات.');
-        }
-
-        const allUsers = db.getAllUsers();
-        const lostUsers = allUsers.filter(u => !u.thread_id);
-
-        if (lostUsers.length === 0) {
-            return interaction.editReply('✅ كل الأعضاء مربوطين بمساحاتهم بنجاح!');
-        }
-
-        console.log(`🎯 [Pin & Mention Scan] Missing users: ${lostUsers.length}`);
+        const dataPath = path.join(process.cwd(), 'data');
+        let msg = '📁 **نتيجة البحث داخل مجلد data:**\n';
         
-        const activeData = await forumChannel.threads.fetchActive();
-        const archivedData = await forumChannel.threads.fetchArchived({ limit: 100 });
-        const allThreads = [...activeData.threads.values(), ...archivedData.threads.values()];
-
-        let recoveredCount = 0;
-        let log = [];
-
-        for (const lostUser of lostUsers) {
-            let foundThread = null;
-            const uid = lostUser.user_id;
-
-            for (const thread of allThreads) {
-                // تخطي المساحات اللي اتربطت بحد تاني
-                if (allUsers.some(u => u.thread_id === thread.id && u.user_id !== uid)) continue;
-
-                let isMatch = false;
-
-                try {
-                    // 1. فحص الرسائل المثبتة (الداش بورد)
-                    const pinnedMsgs = await thread.messages.fetchPinned();
-                    for (const [mId, msg] of pinnedMsgs) {
-                        if (msg.mentions.has(uid) || msg.content.includes(uid) || JSON.stringify(msg.embeds).includes(uid)) {
-                            isMatch = true; break;
-                        }
-                    }
-
-                    // 2. فحص رسالة البداية (لو الداش بورد مش متثبتة)
-                    if (!isMatch) {
-                        const starter = await thread.fetchStarterMessage().catch(()=>null);
-                        if (starter && (starter.mentions.has(uid) || starter.content.includes(uid) || JSON.stringify(starter.embeds).includes(uid))) {
-                            isMatch = true;
-                        }
-                    }
-                } catch(e) {}
-
-                if (isMatch) {
-                    foundThread = thread;
-                    break;
-                }
+        if (fs.existsSync(dataPath)) {
+            const files = fs.readdirSync(dataPath);
+            msg += `\`\`\`\n${files.join('\n')}\n\`\`\`\n`;
+            
+            // البحث عن مجلد backups داخل data
+            const backupPath = path.join(dataPath, 'backups');
+            if (fs.existsSync(backupPath)) {
+                const bFiles = fs.readdirSync(backupPath).filter(f => f.includes('.db') || f.includes('backup'));
+                msg += `\n📦 **لقيت ملفات الباك أب دي:**\n\`\`\`\n${bFiles.join('\n')}\n\`\`\``;
             }
-
-            if (foundThread) {
-                db.db.run('UPDATE users SET thread_id = ? WHERE user_id = ?', [foundThread.id, uid]);
-                lostUser.thread_id = foundThread.id;
-                recoveredCount++;
-                log.push(`✅ ${lostUser.name} ➡️ <#${foundThread.id}>`);
-            } else {
-                log.push(`❌ ${lostUser.name} (فعلاً ملوش مساحة)`);
-            }
+        } else {
+            msg += '❌ المجلد مش موجود.';
         }
         
-        db.save();
-        
-        const resultMsg = `🎯 **الفحص النهائي للداش بورد اكتمل!**\nتم ربط **${recoveredCount}** مساحة.\n\n${log.join('\n')}`.substring(0, 1900);
-        await interaction.editReply(resultMsg);
-        
-    } catch (e) {
-        console.error('❌ Final Scan Error:', e);
-        await interaction.editReply(`❌ حدث خطأ: ${e.message}`);
+        await interaction.reply({ content: msg.substring(0, 1900), ephemeral: true });
+    } catch(e) {
+        await interaction.reply({ content: `❌ Error: ${e.message}`, ephemeral: true });
     }
 }
 
