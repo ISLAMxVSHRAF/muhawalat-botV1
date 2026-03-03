@@ -9,6 +9,8 @@ const {
     Collection
 } = require('discord.js');
 const CONFIG = require('../config');
+const { createConfirmation } = require('../utils/embeds');
+const { updateDashboard } = require('../utils/dashboard');
 
 const ERR = CONFIG.ADMIN?.unifiedErrorMessage || '❌ حدث خطأ داخلي، تمت كتابة التفاصيل في السجل.';
 
@@ -57,7 +59,6 @@ async function issueWarning(userId, reason, adminId, { db, client }) {
         if (adminChId) {
             const adminCh = await client.channels.fetch(adminChId).catch(() => null);
             if (adminCh) {
-                const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
                 const row = new ActionRowBuilder().addComponents(
                     new ButtonBuilder()
                         .setCustomId(`admin_timeout_${userId}_1`)
@@ -162,7 +163,6 @@ async function clearWarnsExecute(interaction, { db, client }) {
         if (!user) return editReply(interaction, '❌ العضو غير مسجل في النظام.');
         
         // Safety: Add confirmation and backup before clearing warnings
-        const { createConfirmation } = require('../utils/embeds');
         
         await interaction.editReply({ content: '⏳ جارٍ التحضير...' });
         
@@ -736,7 +736,6 @@ async function archiveExecute(interaction, { db, client }) {
         }
         
         // Safety: Add confirmation before archiving
-        const { createConfirmation } = require('../utils/embeds');
         
         await interaction.editReply({ content: '⏳ جارٍ التحضير...' });
         
@@ -803,7 +802,6 @@ async function restoreExecute(interaction, { db, client }) {
                         await thread.setArchived(false).catch(() => {});
                     }
                     // Rebuild dashboard
-                    const { updateDashboard } = require('../handlers/onboarding');
                     await updateDashboard(thread, userId, db);
                     return interaction.editReply(`✅ تم استعادة ${user.name}. مساحته: <#${user.thread_id}>`);
                 }
@@ -833,7 +831,6 @@ async function deleteExecute(interaction, { db, client }) {
         }
         
         // Safety: Add confirmation before permanent deletion
-        const { createConfirmation } = require('../utils/embeds');
         
         await interaction.editReply({ content: '⏳ جارٍ التحضير...' });
         
@@ -881,9 +878,6 @@ async function archivedExecute(interaction, { db }) {
         if (!archivedUsers.length) {
             return interaction.editReply('لا يوجد أعضاء مجمّدون حالياً.');
         }
-        
-        const { EmbedBuilder } = require('discord.js');
-        const CONFIG = require('../config');
         
         const embed = new EmbedBuilder()
             .setColor(CONFIG.COLORS.warning)

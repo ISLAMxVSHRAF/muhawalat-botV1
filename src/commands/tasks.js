@@ -629,42 +629,6 @@ async function processTaskEditDeadlineModal(interaction, deps) {
     }
 }
 
-async function processTaskEditDeadlineModal(interaction, deps) {
-    const db = deps.db;
-    if (!db || typeof db.getTask !== 'function') return console.error('CRITICAL: Passed db object is invalid', db);
-    
-    try {
-        const parts = interaction.customId.split('_');
-        const taskId = parseInt(parts[3], 10); // Fix: modal_task_edit_${taskId} -> parts[3] contains taskId
-        
-        const endDate = interaction.fields.getTextInputValue('end_date').trim();
-        const endTime = interaction.fields.getTextInputValue('end_time').trim();
-        
-        // Parse date and time
-        const lockAt = parseDateTime(endDate, endTime);
-        if (!lockAt) {
-            return interaction.update({
-                content: '❌ صيغة التاريخ أو الوقت غير صحيحة. استخدم: DD-MM-YYYY و HH:mm',
-                embeds: [],
-                components: []
-            });
-        }
-        
-        // Update task deadline in database
-        db.updateTask(taskId, { lock_at: lockAt.toISOString() });
-        
-        const lockTs = Math.floor(lockAt.getTime() / 1000);
-        await interaction.update({
-            content: `✅ تم تعديل الموعد بنجاح! الموعد الجديد: <t:${lockTs}:R>`,
-            embeds: [],
-            components: []
-        });
-    } catch (e) {
-        console.error('❌ processTaskEditDeadlineModal:', e);
-        await interaction.update({ content: ERR, embeds: [], components: [] }).catch(() => {});
-    }
-}
-
 // ==========================================
 // Central handler for /admin tasks group
 // ==========================================

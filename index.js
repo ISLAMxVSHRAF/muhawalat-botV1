@@ -6,7 +6,7 @@
 require('dotenv').config();
 const path = require('path');
 const fs = require('fs');
-const { Client, GatewayIntentBits, InteractionType, MessageFlags, EmbedBuilder, Collection } = require('discord.js');
+const { Client, GatewayIntentBits, InteractionType, MessageFlags, EmbedBuilder, Collection, ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 
 const CONFIG = require('./src/config');
 const MuhawalatDatabase        = require('./src/database');
@@ -62,7 +62,7 @@ const dbPath = process.env.RAILWAY_ENVIRONMENT_NAME
 // ==========================================
 // READY
 // ==========================================
-client.once('ready', async () => {
+client.once('clientReady', async () => {
     console.log('\n' + '='.repeat(50));
     console.log('🌱 MUHAWALAT BOT - READY');
     console.log('='.repeat(50));
@@ -479,7 +479,6 @@ client.on('interactionCreate', async interaction => {
                 if (!user) {
                     return interaction.reply({ content: '❌ لازم تسجّل الأول قبل طلب الإجازة.', ephemeral: true });
                 }
-                const { ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
                 const options = [];
                 options.push({ label: 'إجازة عادات (Habits)', value: 'habits', emoji: '📋' });
                 options.push({ label: 'إجازة تقرير يومي (Reports)', value: 'reports', emoji: '📝' });
@@ -542,7 +541,6 @@ client.on('interactionCreate', async interaction => {
 
             if (id === 'btn_refresh') {
                 await interaction.deferUpdate();
-                const { updateDashboard } = require('./src/utils/dashboard');
                 // ✅ BUG FIX: استخدم صاحب المساحة مش اللي ضغط الزرار
                 const threadOwner = db.getUserByThread(interaction.channel.id);
                 const ownerId = threadOwner?.user_id || interaction.user.id;
@@ -577,7 +575,6 @@ client.on('interactionCreate', async interaction => {
             if (interaction.customId === 'dashboard_menu') {
                 const choice = interaction.values[0];
                 if (choice === 'review_history') {
-                    const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
                     const modal = new ModalBuilder().setCustomId('modal_review_date').setTitle('📅 مراجعة يوم محدد');
                     modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('review_date').setLabel('التاريخ (DD-MM-YYYY)').setStyle(TextInputStyle.Short).setPlaceholder('مثال: 20-02-2026').setRequired(true)));
                     return interaction.showModal(modal);
@@ -607,7 +604,6 @@ client.on('interactionCreate', async interaction => {
                 if (choice === 'weekly_goal')  return showWeeklyGoalModal(interaction, db);
                 if (choice === 'about')        return showAbout(interaction);
                 if (choice === 'my_website') {
-                    const { MessageFlags } = require('discord.js');
                     const base = process.env.WEB_BASE_URL || `http://localhost:${process.env.WEB_PORT || 3000}`;
                     return interaction.reply({
                         content: `🌐 **صفحتك على الموقع:**\n${base}/member.html?id=${interaction.user.id}`,
@@ -668,8 +664,6 @@ client.on('interactionCreate', async interaction => {
 // ⏱️ TIMEOUT SYSTEM
 // ==========================================
 async function handleTimeoutApprove(interaction, userId, db) {
-    const { ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
-
     const user = db.getUser(userId);
     if (!user) return interaction.reply({ content: '❌ المستخدم مش موجود في الداتابيز.', ephemeral: true });
 
@@ -740,8 +734,6 @@ async function executeTimeout(interaction, userId, durationMinutes, db) {
 // ✅ FIX: تحديث وصف الـ Embed بمحتوى جديد يعبر عن المرحلة الحالية
 // ==========================================
 async function showAbout(interaction) {
-    const { EmbedBuilder } = require('discord.js');
-    const CONFIG = require('./src/config');
     const embed  = new EmbedBuilder()
         .setColor(CONFIG.COLORS.primary)
         .setTitle('📖 عن بوت محاولات')

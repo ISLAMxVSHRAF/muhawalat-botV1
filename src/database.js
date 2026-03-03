@@ -651,9 +651,10 @@ class MuhawalatDatabase {
 
     // Hard delete a member (only called after confirmation + backup)
     deleteUserPermanently(userId) {
-        const tables = ['habits', 'stats', 'daily_history', 'achievements', 'goals',
-                        'daily_reports', 'warnings_log', 'timeout_pending', 'freezes_log',
-                        'journal_logs', 'journals', 'weekly_goals'];
+        const tables = ['habits', 'daily_history', 'achievements', 'goals',
+                        'reports', 'warnings_log', 'timeout_pending', 'freezes_log',
+                        'journals', 'task_completions', 'challenge_participants',
+                        'challenge_daily_logs', 'daily_history'];
         for (const table of tables) {
             try { this.db.run(`DELETE FROM ${table} WHERE user_id=?`, [userId]); } catch(e) {}
         }

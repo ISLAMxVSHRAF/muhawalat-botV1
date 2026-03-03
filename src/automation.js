@@ -687,9 +687,9 @@ class AutomationSystem {
                 });
                 await replyTest('✅ تم الإرسال.');
             } else {
-                const statsChId = process.env.STATS_CHANNEL_ID;
+                const statsChId = process.env.LEADERBOARD_CHANNEL_ID || process.env.NOTIFY_CORNER_ID;
                 if (!statsChId) {
-                    console.log('🌾 Weekly harvest skipped — STATS_CHANNEL_ID not set.');
+                    console.log('🌾 Weekly harvest skipped — no stats channel configured.');
                     return;
                 }
 
