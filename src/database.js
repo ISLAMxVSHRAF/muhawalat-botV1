@@ -830,6 +830,7 @@ class MuhawalatDatabase {
                    warning_count, daily_review_count, streak_freeze, freeze_habits, freeze_reports,
                    total_done, days_streak, achieved_today
             FROM users
+            WHERE status = 'active' OR status IS NULL
         `);
         const r = [];
         while (s.step()) r.push(s.getAsObject());
