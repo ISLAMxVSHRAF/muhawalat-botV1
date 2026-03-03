@@ -552,12 +552,17 @@ async function showRadarSelectionPage(interaction, type, days, targets, excluded
 
     const components = [];
 
-    // Select menu to exclude members
+    // Select menu to exclude members (only if there are members on this page)
+    if (pageTargets.length === 0) {
+        await interaction.editReply({ content: '❌ لا يوجد أعضاء في هذه الصفحة.', embeds: [], components: [] });
+        return;
+    }
+
     const selectMenu = new StringSelectMenuBuilder()
         .setCustomId(`radar_exclude_${type}_${days}_${page}`)
-        .setPlaceholder('اختر أعضاء لاستثنائهم من الإرسال')
+        .setPlaceholder('اختر أعضاء لاستثنائهم من الإرسال (اختياري)')
         .setMinValues(0)
-        .setMaxValues(pageTargets.length)
+        .setMaxValues(Math.max(1, pageTargets.length))
         .addOptions(pageTargets.map(u => ({
             label: (u.name || u.user_id).slice(0, 25),
             value: u.user_id,
