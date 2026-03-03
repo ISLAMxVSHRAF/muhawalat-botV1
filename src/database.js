@@ -31,7 +31,6 @@ class MuhawalatDatabase {
         }
         this.initTables();
         this.runMigrations();
-        this.runPhase3Migration();
         this.saveImmediate();
     }
 
@@ -117,6 +116,11 @@ class MuhawalatDatabase {
             streak_freeze INTEGER DEFAULT 1,
             freeze_habits INTEGER DEFAULT 2,
             freeze_reports INTEGER DEFAULT 2,
+            total_done INTEGER DEFAULT 0,
+            days_streak INTEGER DEFAULT 0,
+            achieved_today INTEGER DEFAULT 0,
+            last_active TEXT DEFAULT NULL,
+            status TEXT DEFAULT 'active',
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )`);
 
@@ -203,6 +207,19 @@ class MuhawalatDatabase {
             reason TEXT,
             issued_by TEXT,
             issued_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )`);
+
+        this.db.run(`CREATE TABLE IF NOT EXISTS reports (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     TEXT NOT NULL,
+            type        TEXT NOT NULL,
+            report_date TEXT NOT NULL,
+            thread_id   TEXT,
+            channel_id  TEXT,
+            content     TEXT,
+            word_count  INTEGER,
+            recorded_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, type, report_date)
         )`);
 
         // ✅ جدول التقارير اليومية
@@ -391,12 +408,6 @@ class MuhawalatDatabase {
             }
         }
 
-        // Add index for status column
-        try {
-            this.db.run(`CREATE INDEX IF NOT EXISTS idx_users_status ON users(status)`);
-        } catch (e) {
-            console.warn('⚠️ Status index creation:', e.message);
-        }
 
         // إنشاء جدول daily_reports لو مش موجود (للقواعد القديمة)
         try {
@@ -507,171 +518,6 @@ class MuhawalatDatabase {
             if (arNames.indexOf('embed_title') === -1) this.db.run('ALTER TABLE auto_responses ADD COLUMN embed_title TEXT');
             if (arNames.indexOf('embed_color') === -1) this.db.run('ALTER TABLE auto_responses ADD COLUMN embed_color TEXT');
         } catch (e) { if (!e.message.includes('duplicate column')) console.warn('⚠️ Migration auto_responses:', e.message); }
-    }
-
-    // ==========================================
-    // 🔄 PHASE 3 MIGRATION - Database Cleanup & Consolidation
-    // ==========================================
-    runPhase3Migration() {
-        // Critical: Create backup before any migration
-        this.safeBackup('before-phase3-migration');
-        
-        try {
-            console.log('🔄 Starting Phase 3 Database Migration...');
-            
-            // Task 1: Merge 4 report tables into 1
-            this._migrateReports();
-            
-            // Task 2: Merge users + stats
-            this._mergeUsersStats();
-            
-            // Task 3: Merge weekly_goals into goals
-            this._mergeWeeklyGoals();
-            
-            // Task 4: Merge journal_logs into journals
-            this._mergeJournalLogs();
-            
-            console.log('✅ Phase 3 Migration completed successfully');
-        } catch (error) {
-            console.error('❌ Phase 3 Migration failed:', error.message);
-            throw error;
-        }
-    }
-
-    _migrateReports() {
-        console.log('📊 Migrating reports tables...');
-        
-        // Create new unified reports table
-        this.db.run(`CREATE TABLE IF NOT EXISTS reports (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id     TEXT NOT NULL,
-            type        TEXT NOT NULL,
-            report_date TEXT NOT NULL,
-            thread_id   TEXT,
-            channel_id  TEXT,
-            content     TEXT,
-            word_count  INTEGER,
-            recorded_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(user_id, type, report_date)
-        )`);
-        this.db.run(`CREATE INDEX IF NOT EXISTS idx_reports_user_type_date ON reports(user_id, type, report_date)`);
-        
-        // Migrate data in transaction
-        this.db.run('BEGIN TRANSACTION');
-        try {
-            // Migrate daily reports
-            this.db.run(`INSERT OR IGNORE INTO reports (user_id, type, report_date, thread_id, content, word_count, recorded_at)
-                SELECT user_id, 'daily', report_date, thread_id, content, word_count, recorded_at FROM daily_reports`);
-            
-            // Migrate weekly reports
-            this.db.run(`INSERT OR IGNORE INTO reports (user_id, type, report_date, channel_id, content, word_count, recorded_at)
-                SELECT user_id, 'weekly', report_date, channel_id, content, word_count, recorded_at FROM weekly_reports`);
-            
-            // Migrate monthly reports
-            this.db.run(`INSERT OR IGNORE INTO reports (user_id, type, report_date, channel_id, content, word_count, recorded_at)
-                SELECT user_id, 'monthly', report_date, channel_id, content, word_count, recorded_at FROM monthly_reports`);
-            
-            // Migrate yearly reports
-            this.db.run(`INSERT OR IGNORE INTO reports (user_id, type, report_date, channel_id, content, word_count, recorded_at)
-                SELECT user_id, 'yearly', report_date, channel_id, content, word_count, recorded_at FROM yearly_reports`);
-            
-            this.db.run('COMMIT');
-        } catch (e) {
-            this.db.run('ROLLBACK');
-            throw e;
-        }
-        
-        // Drop old tables and create VIEWs
-        this.db.run('DROP TABLE IF EXISTS daily_reports');
-        this.db.run('CREATE VIEW IF NOT EXISTS daily_reports AS SELECT id, user_id, report_date, thread_id, content, word_count, recorded_at FROM reports WHERE type=\'daily\'');
-        
-        this.db.run('DROP TABLE IF EXISTS weekly_reports');
-        this.db.run('CREATE VIEW IF NOT EXISTS weekly_reports AS SELECT id, user_id, report_date, channel_id, content, word_count, recorded_at FROM reports WHERE type=\'weekly\'');
-        
-        this.db.run('DROP TABLE IF EXISTS monthly_reports');
-        this.db.run('CREATE VIEW IF NOT EXISTS monthly_reports AS SELECT id, user_id, report_date, channel_id, content, word_count, recorded_at FROM reports WHERE type=\'monthly\'');
-        
-        this.db.run('DROP TABLE IF EXISTS yearly_reports');
-        this.db.run('CREATE VIEW IF NOT EXISTS yearly_reports AS SELECT id, user_id, report_date, channel_id, content, word_count, recorded_at FROM reports WHERE type=\'yearly\'');
-        
-        console.log('✅ Reports migration completed');
-    }
-
-    _mergeUsersStats() {
-        console.log('👥 Merging users and stats tables...');
-        
-        // Migrate stats data in transaction
-        this.db.run('BEGIN TRANSACTION');
-        try {
-            this.db.run(`UPDATE users SET
-                total_done     = COALESCE((SELECT total_done FROM stats WHERE stats.user_id = users.user_id), 0),
-                days_streak    = COALESCE((SELECT days_streak FROM stats WHERE stats.user_id = users.user_id), 0),
-                achieved_today = COALESCE((SELECT achieved_today FROM stats WHERE stats.user_id = users.user_id), 0),
-                last_active    = COALESCE((SELECT last_active FROM stats WHERE stats.user_id = users.user_id), CURRENT_TIMESTAMP)
-            WHERE EXISTS (SELECT 1 FROM stats WHERE stats.user_id = users.user_id)`);
-            
-            this.db.run('COMMIT');
-        } catch (e) {
-            this.db.run('ROLLBACK');
-            throw e;
-        }
-        
-        // Drop stats table and create VIEW
-        this.db.run('DROP TABLE IF EXISTS stats');
-        this.db.run(`CREATE VIEW IF NOT EXISTS stats AS
-            SELECT user_id, total_done, days_streak, achieved_today, last_active FROM users`);
-        
-        console.log('✅ Users/Stats merge completed');
-    }
-
-    _mergeWeeklyGoals() {
-        console.log('🎯 Merging weekly_goals into goals...');
-        
-        // Migrate data in transaction
-        this.db.run('BEGIN TRANSACTION');
-        try {
-            this.db.run(`INSERT OR IGNORE INTO goals (user_id, goal_text, goal_type, period, is_active, created_at)
-                SELECT user_id, goal_text, 'weekly', week_start,
-                       CASE WHEN completed = 0 THEN 1 ELSE 0 END,
-                       CURRENT_TIMESTAMP
-                FROM weekly_goals
-                WHERE goal_text IS NOT NULL AND goal_text != ''`);
-            
-            this.db.run('COMMIT');
-        } catch (e) {
-            this.db.run('ROLLBACK');
-            throw e;
-        }
-        
-        // Drop weekly_goals and create VIEW
-        this.db.run('DROP TABLE IF EXISTS weekly_goals');
-        this.db.run(`CREATE VIEW IF NOT EXISTS weekly_goals AS
-            SELECT id, user_id, goal_text, period AS week_start, is_active AS completed FROM goals WHERE goal_type='weekly'`);
-        
-        console.log('✅ Weekly goals merge completed');
-    }
-
-    _mergeJournalLogs() {
-        console.log('📔 Merging journal_logs into journals...');
-        
-        // Migrate data in transaction
-        this.db.run('BEGIN TRANSACTION');
-        try {
-            this.db.run(`INSERT OR IGNORE INTO journals (user_id, content, type, sentiment, created_at)
-                SELECT user_id, content, type, sentiment, date FROM journal_logs`);
-            
-            this.db.run('COMMIT');
-        } catch (e) {
-            this.db.run('ROLLBACK');
-            throw e;
-        }
-        
-        // Drop journal_logs and create VIEW
-        this.db.run('DROP TABLE IF EXISTS journal_logs');
-        this.db.run(`CREATE VIEW IF NOT EXISTS journal_logs AS
-            SELECT id, user_id, type, content, created_at AS date, sentiment FROM journals`);
-        
-        console.log('✅ Journal logs merge completed');
     }
 
     // ==========================================

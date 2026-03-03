@@ -453,7 +453,7 @@ async function taskEditDeadlineExecute(interaction, { db }) {
         // Check if task exists (optional but good practice)
         const task = db.getTask(taskId);
         if (!task) {
-            return interaction.editReply('❌ المهمة المحددة غير موجودة.');
+            return interaction.editReply(`❌ المهمة رقم ${taskId} غير موجودة. استخدم /admin tasks task_list لمشاهدة الأرقام الصحيحة.`);
         }
 
         // Update the task deadline
@@ -464,6 +464,29 @@ async function taskEditDeadlineExecute(interaction, { db }) {
     } catch (e) {
         console.error('❌ task_edit_deadline:', e);
         await interaction.editReply(ERR).catch(() => {});
+    }
+}
+
+async function taskDeleteExecute(interaction, { db }) {
+    try {
+        await interaction.deferReply({ ephemeral: true });
+        const taskId = interaction.options.getInteger('task_id');
+        const task = db.getTask(taskId);
+        if (!task) return interaction.editReply('❌ المهمة غير موجودة.');
+
+        const { createConfirmation } = require('../utils/embeds');
+        const confirmed = await createConfirmation(interaction, {
+            title: '🗑️ حذف مهمة',
+            description: `سيتم حذف **${task.title}** (${task.type === 'weekly' ? 'أسبوعية' : 'شهرية'}) نهائياً.\n⚠️ كل تسجيلات الأعضاء فيها ستتحذف.`,
+        });
+        if (!confirmed) return;
+
+        db.safeBackup('before-delete-task');
+        db.deleteTask(taskId);
+        await interaction.editReply(`✅ تم حذف المهمة **${task.title}** بنجاح.`);
+    } catch (e) {
+        console.error('❌ task_delete:', e);
+        await interaction.editReply('❌ حدث خطأ.').catch(() => {});
     }
 }
 
@@ -534,9 +557,18 @@ async function handleTaskButtons(interaction, deps) {
         }
         
         if (interaction.customId === 'btn_task_delete_static') {
+            const task = db.getTask(taskId);
+            const { createConfirmation } = require('../utils/embeds');
+            await interaction.deferUpdate();
+            const confirmed = await createConfirmation(interaction, {
+                title: '🗑️ حذف المهمة',
+                description: `سيتم حذف مهمة **${task?.title || '#' + taskId}** نهائياً.\n\nتسجيلات الأعضاء فيها **ستُحذف هي الأخرى**.`,
+            });
+            if (!confirmed) return;
+            db.safeBackup('before-delete-task');
             db.deleteTask(taskId);
             _activeTaskManagement.delete(interaction.user.id);
-            await interaction.update({ content: '✅ تم حذف المهمة بنجاح.', embeds: [], components: [] });
+            await interaction.editReply({ content: '✅ تم حذف المهمة بنجاح.', embeds: [], components: [] });
         }
         
         if (interaction.customId === 'btn_task_edit_static') {
@@ -648,6 +680,8 @@ async function handleTasks(interaction, deps) {
             return taskLinkExecute(interaction, deps);
         case 'task_edit_deadline':
             return taskEditDeadlineExecute(interaction, deps);
+        case 'task_delete':
+            return taskDeleteExecute(interaction, deps);
         case 'sync_tasks':
             return syncTasksExecute(interaction, deps);
         default:
@@ -660,6 +694,7 @@ module.exports = {
     processTaskCreateModal, 
     handleTaskSelectMenu, 
     handleTaskButtons, 
-    processTaskEditDeadlineModal 
+    processTaskEditDeadlineModal,
+    taskDeleteExecute 
 };
 

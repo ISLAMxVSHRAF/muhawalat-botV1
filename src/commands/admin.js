@@ -202,6 +202,15 @@ const data = new SlashCommandBuilder()
                     )
             )
             .addSubcommand(sub =>
+                sub.setName('task_delete')
+                   .setDescription('حذف مهمة نهائياً')
+                   .addIntegerOption(opt =>
+                       opt.setName('task_id')
+                          .setDescription('رقم المهمة')
+                          .setRequired(true)
+                   )
+            )
+            .addSubcommand(sub =>
                 sub
                     .setName('sync_tasks')
                     .setDescription(
