@@ -573,8 +573,8 @@ client.on('interactionCreate', async interaction => {
             }
             if (interaction.customId === 'select_manage_task') return handleTaskSelectMenu(interaction, { db, client: interaction.client });
             if (interaction.customId.startsWith('btn_task_')) return handleTaskButtons(interaction, { db, client: interaction.client });
-            if (interaction.customId.startsWith('dash_')) {
-                const page = interaction.customId.replace('dash_', '');
+            if (id.startsWith('dash_')) {
+                const page = id.replace('dash_', '');
                 const validPages = ['overview', 'reports', 'tasks', 'warnings', 'members'];
                 // For refresh button, get current page from the active embed title
                 let targetPage = validPages.includes(page) ? page : null;
