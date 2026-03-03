@@ -6,7 +6,8 @@ const {
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
-    Collection
+    Collection,
+    StringSelectMenuBuilder
 } = require('discord.js');
 const CONFIG = require('../config');
 const { createConfirmation } = require('../utils/embeds');
@@ -495,33 +496,109 @@ async function radarExecute(interaction, { db }) {
 
 // Cache for Radar V2 nudges
 const _radarNudgeCache = new Map();
+const _radarSelectionCache = new Map(); // stores { type, days, targets, excluded, page }
 
-async function handleRadarNudgeButton(interaction) {
+async function handleRadarNudgeButton(interaction, deps) {
     try {
-        const parts = interaction.customId.split('_'); // ['btn','radar','nudge',type,days]
-        const type = parts[3]; // zero | danger | good
+        const parts = interaction.customId.split('_');
+        const type = parts[3];
         const days = parseInt(parts[4], 10) || 7;
 
-        const modal = new ModalBuilder()
-            .setCustomId(`modal_radar_${type}_${days}`)
-            .setTitle('رسالة التنبيه - رادار النشاط');
+        await interaction.deferReply({ ephemeral: true });
 
-        const pool = NUDGE_MESSAGES[type] || NUDGE_MESSAGES.zero;
-        const defaultText = pool[Math.floor(Math.random() * pool.length)];
+        const { db } = deps;
+        const { good, danger, zero } = await segmentUsersByReports(db, days, interaction.guild);
 
-        const input = new TextInputBuilder()
-            .setCustomId('radar_message')
-            .setLabel('نص رسالة التنبيه')
-            .setStyle(TextInputStyle.Paragraph)
-            .setRequired(true)
-            .setValue(defaultText);
+        const allTargets = type === 'zero' ? zero : type === 'danger' ? danger : good;
 
-        modal.addComponents(new ActionRowBuilder().addComponents(input));
+        if (!allTargets.length) {
+            return interaction.editReply(`ℹ️ لا يوجد أعضاء في فئة ${type === 'zero' ? 'المختفي' : type === 'danger' ? 'في خطر' : 'أداء جيد'}.`);
+        }
 
-        await interaction.showModal(modal);
+        _radarSelectionCache.set(interaction.user.id, {
+            type, days,
+            targets: allTargets,
+            excluded: new Set(),
+            page: 0
+        });
+
+        await showRadarSelectionPage(interaction, type, days, allTargets, new Set(), 0);
     } catch (e) {
         console.error('❌ handleRadarNudgeButton:', e);
+        await interaction.editReply(ERR).catch(() => {});
     }
+}
+
+async function showRadarSelectionPage(interaction, type, days, targets, excluded, page) {
+    const PAGE_SIZE = 25;
+    const totalPages = Math.ceil(targets.length / PAGE_SIZE);
+    const pageTargets = targets.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+    const remaining = targets.filter(u => !excluded.has(u.user_id));
+
+    const typeLabel = type === 'zero' ? '🔴 المختفي' : type === 'danger' ? '🟠 في خطر' : '🌟 أداء جيد';
+
+    const embed = new EmbedBuilder()
+        .setColor(type === 'zero' ? 0xe74c3c : type === 'danger' ? 0xe67e22 : 0x2ecc71)
+        .setTitle(`📡 اختيار الأعضاء — ${typeLabel}`)
+        .setDescription(
+            `إجمالي الأعضاء: **${targets.length}** | سيتم الإرسال لـ: **${remaining.length}**\n` +
+            `الصفحة ${page + 1} من ${totalPages}\n\n` +
+            `اختر الأعضاء اللي **مش** عايز تبعتلهم من القائمة أدناه:` 
+        )
+        .addFields({
+            name: `أعضاء الصفحة الحالية (${pageTargets.length})`,
+            value: pageTargets.map(u => `${excluded.has(u.user_id) ? '~~' : ''}<@${u.user_id}>${excluded.has(u.user_id) ? '~~ ❌' : ''}`).join(' · ') || '—'
+        });
+
+    const components = [];
+
+    // Select menu to exclude members
+    const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId(`radar_exclude_${type}_${days}_${page}`)
+        .setPlaceholder('اختر أعضاء لاستثنائهم من الإرسال')
+        .setMinValues(0)
+        .setMaxValues(pageTargets.length)
+        .addOptions(pageTargets.map(u => ({
+            label: (u.name || u.user_id).slice(0, 25),
+            value: u.user_id,
+            default: excluded.has(u.user_id),
+            description: `${u.reportCount ?? 0} تقارير` 
+        })));
+
+    components.push(new ActionRowBuilder().addComponents(selectMenu));
+
+    // Navigation + action buttons
+    const navRow = new ActionRowBuilder();
+
+    if (page > 0) {
+        navRow.addComponents(
+            new ButtonBuilder()
+                .setCustomId(`btn_radar_page_${type}_${days}_${page - 1}`)
+                .setLabel('◀️ السابق')
+                .setStyle(ButtonStyle.Secondary)
+        );
+    }
+
+    if (page < totalPages - 1) {
+        navRow.addComponents(
+            new ButtonBuilder()
+                .setCustomId(`btn_radar_page_${type}_${days}_${page + 1}`)
+                .setLabel('التالي ▶️')
+                .setStyle(ButtonStyle.Secondary)
+        );
+    }
+
+    navRow.addComponents(
+        new ButtonBuilder()
+            .setCustomId(`btn_radar_confirm_${type}_${days}`)
+            .setLabel(`✅ متابعة (${remaining.length} عضو)`)
+            .setStyle(ButtonStyle.Success)
+            .setDisabled(remaining.length === 0)
+    );
+
+    components.push(navRow);
+
+    await interaction.editReply({ embeds: [embed], components });
 }
 
 async function processRadarNudgeModal(interaction) {
@@ -566,6 +643,81 @@ async function processRadarNudgeModal(interaction) {
     }
 }
 
+async function handleRadarExcludeSelect(interaction) {
+    try {
+        await interaction.deferUpdate();
+        const parts = interaction.customId.split('_'); // radar_exclude_type_days_page
+        const type = parts[2];
+        const days = parseInt(parts[3], 10) || 7;
+        const page = parseInt(parts[4], 10) || 0;
+
+        const selected = interaction.values; // user IDs to exclude
+        const cached = _radarSelectionCache.get(interaction.user.id);
+        if (!cached) return;
+
+        // Update excluded: remove all on this page first, then add selected
+        const PAGE_SIZE = 25;
+        const pageTargets = cached.targets.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+        for (const u of pageTargets) cached.excluded.delete(u.user_id);
+        for (const uid of selected) cached.excluded.add(uid);
+
+        await showRadarSelectionPage(interaction, type, days, cached.targets, cached.excluded, page);
+    } catch (e) {
+        console.error('❌ handleRadarExcludeSelect:', e);
+    }
+}
+
+async function handleRadarPageNav(interaction) {
+    try {
+        await interaction.deferUpdate();
+        const parts = interaction.customId.split('_'); // btn_radar_page_type_days_newpage
+        const type = parts[3];
+        const days = parseInt(parts[4], 10) || 7;
+        const newPage = parseInt(parts[5], 10) || 0;
+
+        const cached = _radarSelectionCache.get(interaction.user.id);
+        if (!cached) return;
+
+        cached.page = newPage;
+        await showRadarSelectionPage(interaction, type, days, cached.targets, cached.excluded, newPage);
+    } catch (e) {
+        console.error('❌ handleRadarPageNav:', e);
+    }
+}
+
+async function handleRadarConfirm(interaction) {
+    try {
+        const parts = interaction.customId.split('_'); // btn_radar_confirm_type_days
+        const type = parts[3];
+        const days = parseInt(parts[4], 10) || 7;
+
+        const cached = _radarSelectionCache.get(interaction.user.id);
+        if (!cached) return interaction.reply({ content: '❌ انتهت الجلسة.', ephemeral: true });
+
+        const pool = NUDGE_MESSAGES[type] || NUDGE_MESSAGES.zero;
+        const defaultText = pool[Math.floor(Math.random() * pool.length)];
+
+        const modal = new ModalBuilder()
+            .setCustomId(`modal_radar_${type}_${days}`)
+            .setTitle('رسالة التنبيه - رادار النشاط');
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('radar_message')
+                    .setLabel('نص رسالة التنبيه')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setRequired(true)
+                    .setValue(defaultText)
+            )
+        );
+
+        await interaction.showModal(modal);
+    } catch (e) {
+        console.error('❌ handleRadarConfirm:', e);
+    }
+}
+
 async function executeRadarRouting(interaction, { db, client }) {
     try {
         await interaction.deferReply({ ephemeral: true });
@@ -583,14 +735,17 @@ async function executeRadarRouting(interaction, { db, client }) {
         }
 
         const { message } = cached;
-        const { complete, good, danger, zero } = await segmentUsersByReports(db, days, interaction.guild);
-
-        const targets =
-            type === 'zero'
-                ? zero
-                : type === 'danger'
-                ? danger
-                : good;
+        
+        const selectionCached = _radarSelectionCache.get(interaction.user.id);
+        let targets;
+        if (selectionCached && selectionCached.type === type && selectionCached.days === days && selectionCached.targets) {
+            // Use cached targets with exclusions applied
+            targets = selectionCached.targets.filter(u => !selectionCached.excluded.has(u.user_id));
+        } else {
+            // Fallback: fetch fresh
+            const { good, danger, zero } = await segmentUsersByReports(db, days, interaction.guild);
+            targets = type === 'zero' ? zero : type === 'danger' ? danger : good;
+        }
 
         if (!targets.length) {
             return interaction.editReply(
@@ -598,18 +753,14 @@ async function executeRadarRouting(interaction, { db, client }) {
             );
         }
 
-        // Filter members again for safe sending
-        let members;
+        const validTargets = targets;
+        const members = new Collection(); // for name fallback only
         try {
             members = await interaction.guild.members.fetch({ time: 120000 }); // wait up to 2 minutes
         } catch (err) {
             console.log('Radar member fetch timed out gracefully.');
             members = new Collection(); // fallback to empty collection
         }
-        const validTargets = targets.filter(user => {
-            const member = members.get(user.user_id);
-            return member && (!process.env.MEMBER_ROLE_ID || member.roles.cache.has(process.env.MEMBER_ROLE_ID));
-        });
 
         if (!validTargets.length) {
             return interaction.editReply(
@@ -625,7 +776,7 @@ async function executeRadarRouting(interaction, { db, client }) {
             let dmOk = false;
             let threadOk = false;
 
-            const userName = user.name || members.get(user.user_id)?.displayName || 'عضو';
+            const userName = user.name || 'عضو';
             const personalizedMessage = message.replace(/{name}/g, userName);
 
             if (method === 'dm' || method === 'both') {
@@ -960,6 +1111,9 @@ module.exports = {
     issueWarning,
     handleRadarNudgeButton,
     processRadarNudgeModal,
-    executeRadarRouting
+    executeRadarRouting,
+    handleRadarExcludeSelect,
+    handleRadarPageNav,
+    handleRadarConfirm
 };
 

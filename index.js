@@ -37,7 +37,10 @@ const { processTaskCreateModal, handleTaskSelectMenu, handleTaskButtons, process
 const {
     handleRadarNudgeButton,
     processRadarNudgeModal,
-    executeRadarRouting
+    executeRadarRouting,
+    handleRadarExcludeSelect,
+    handleRadarPageNav,
+    handleRadarConfirm
 } = require('./src/commands/users');
 
 // ==========================================
@@ -313,7 +316,9 @@ client.on('interactionCreate', async interaction => {
             const id = interaction.customId;
             if (id.startsWith('clb_prev_') || id.startsWith('clb_next_')) return handleChallengeLeaderboardButton(interaction, db);
             if (id.startsWith('dr_')) return handleDailyReportButton(interaction, db);
-            if (id.startsWith('btn_radar_nudge_')) return handleRadarNudgeButton(interaction);
+            if (id.startsWith('btn_radar_nudge_')) return handleRadarNudgeButton(interaction, { db, client });
+            if (id.startsWith('btn_radar_page_')) return handleRadarPageNav(interaction);
+            if (id.startsWith('btn_radar_confirm_')) return handleRadarConfirm(interaction);
 
             if (id.startsWith('harvest_')) {
                 await interaction.deferReply({ ephemeral: true });
@@ -576,6 +581,7 @@ client.on('interactionCreate', async interaction => {
         }
         else if (interaction.isStringSelectMenu()) {
             if (interaction.customId === 'del_menu') return processDeleteHabit(interaction, db);
+            if (interaction.customId.startsWith('radar_exclude_')) return handleRadarExcludeSelect(interaction);
             if (interaction.customId === 'freeze_select') {
                 const type = interaction.values[0] === 'reports' ? 'reports' : 'habits';
                 const user = db.getUser(interaction.user.id);
