@@ -370,7 +370,7 @@ class MuhawalatDatabase {
             `ALTER TABLE users ADD COLUMN total_done INTEGER DEFAULT 0`,
             `ALTER TABLE users ADD COLUMN days_streak INTEGER DEFAULT 0`,
             `ALTER TABLE users ADD COLUMN achieved_today INTEGER DEFAULT 0`,
-            `ALTER TABLE users ADD COLUMN last_active TEXT DEFAULT CURRENT_TIMESTAMP`,
+            `ALTER TABLE users ADD COLUMN last_active TEXT DEFAULT NULL`,
             `ALTER TABLE journals ADD COLUMN type TEXT DEFAULT 'general'`,
             `ALTER TABLE journals ADD COLUMN sentiment TEXT DEFAULT 'neutral'`,
             `ALTER TABLE custom_months ADD COLUMN guild_id TEXT`,
