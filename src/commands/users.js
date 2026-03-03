@@ -646,29 +646,123 @@ async function executeRadarRouting(interaction, { db, client }) {
 // ==========================================
 
 async function cleanDepartedExecute(interaction, { db, client }) {
+    await interaction.deferReply({ ephemeral: true });
     const fs = require('fs');
     const path = require('path');
+
     try {
-        const dataPath = path.join(process.cwd(), 'data');
-        let msg = '📁 **نتيجة البحث داخل مجلد data:**\n';
-        
-        if (fs.existsSync(dataPath)) {
-            const files = fs.readdirSync(dataPath);
-            msg += `\`\`\`\n${files.join('\n')}\n\`\`\`\n`;
-            
-            // البحث عن مجلد backups داخل data
-            const backupPath = path.join(dataPath, 'backups');
-            if (fs.existsSync(backupPath)) {
-                const bFiles = fs.readdirSync(backupPath).filter(f => f.includes('.db') || f.includes('backup'));
-                msg += `\n📦 **لقيت ملفات الباك أب دي:**\n\`\`\`\n${bFiles.join('\n')}\n\`\`\``;
+        // 1. إرسال الداتابيز في رسالة عشان تطمن
+        const dbPath = path.join(process.cwd(), 'data', 'muhawalat.db');
+        if (fs.existsSync(dbPath)) {
+            try {
+                await interaction.user.send({
+                    content: '📦 **خد الداتابيز بتاعتك أهي، حملها عندك عشان تطمن إن ولا حرف ضاع!**',
+                    files: [dbPath]
+                });
+            } catch(e) {
+                // لو الخاص عندك مقفول، هيبعتها في الشات
+                await interaction.followUp({ content: '📦 نسخة الداتابيز الحالية:', files: [dbPath], ephemeral: true }).catch(()=>{});
             }
-        } else {
-            msg += '❌ المجلد مش موجود.';
         }
-        
-        await interaction.reply({ content: msg.substring(0, 1900), ephemeral: true });
-    } catch(e) {
-        await interaction.reply({ content: `❌ Error: ${e.message}`, ephemeral: true });
+
+        // 2. إحصاء العادات عشان أثبتلك إنها موجودة
+        let habitsCount = 0;
+        try {
+            habitsCount = db.db.prepare('SELECT COUNT(*) as count FROM habits').get().count;
+        } catch(e) {}
+
+        const guild = interaction.guild;
+        const FORUM_ID = '1466133087896207380'; 
+        const forumChannel = await guild.channels.fetch(FORUM_ID).catch(() => null);
+
+        const allUsers = db.getAllUsers();
+        const lostUsers = allUsers.filter(u => !u.thread_id);
+
+        if (lostUsers.length === 0) {
+            return interaction.editReply(`✅ كل الأعضاء مربوطين!\n📊 عدد العادات المحفوظة: **${habitsCount}**`);
+        }
+
+        // 3. جلب كللللل المساحات (النشطة والمؤرشفة حتى لو 1000 مساحة)
+        const activeData = await forumChannel.threads.fetchActive();
+        const allThreads = new Map();
+        activeData.threads.forEach((v,k) => allThreads.set(k,v));
+
+        let lastThread = null;
+        for (let i = 0; i < 10; i++) { // هيقلب في 10 صفحات أرشيف
+            const options = { limit: 100 };
+            if (lastThread) options.before = lastThread;
+            const arc = await forumChannel.threads.fetchArchived(options);
+            if (arc.threads.size === 0) break;
+            arc.threads.forEach((v, k) => allThreads.set(k, v));
+            lastThread = arc.threads.last().id;
+        }
+
+        // 4. دالة فلترة الأسماء (بتمسح التشكيل والمسافات والهمزات)
+        function normalizeText(text) {
+            if (!text) return '';
+            return text.toLowerCase()
+                .replace(/[أإآا]/g, 'ا')
+                .replace(/[ةه]/g, 'ه')
+                .replace(/[يىئ]/g, 'ي')
+                .replace(/[\u064B-\u065F\u0640]/g, '') // إزالة التشكيل تماماً
+                .replace(/[^a-z0-9ا-ي]/g, ''); // الاحتفاظ بالحروف والأرقام بس
+        }
+
+        let recoveredCount = 0;
+        let log = [];
+
+        for (const lostUser of lostUsers) {
+            let foundThread = null;
+            const uid = lostUser.user_id;
+            const uNameNorm = normalizeText(lostUser.name);
+
+            // نجيب اسم العضو الحقيقي من بروفايل ديسكورد عشان نطابقه
+            let dNameNorm = '';
+            let uNameNorm2 = '';
+            try {
+                const member = await guild.members.fetch(uid).catch(()=>null);
+                if (member) {
+                    dNameNorm = normalizeText(member.displayName);
+                    uNameNorm2 = normalizeText(member.user.username);
+                }
+            } catch(e) {}
+
+            for (const [id, thread] of allThreads) {
+                // تخطي اللي اتربطوا قبل كده
+                if (allUsers.some(u => u.thread_id === thread.id && u.user_id !== uid)) continue;
+
+                const tNameNorm = normalizeText(thread.name);
+
+                // المطابقة الخارقة بالاسم (سواء الداتابيز أو ديسكورد)
+                if (
+                    (dNameNorm && tNameNorm.includes(dNameNorm)) ||
+                    (uNameNorm2 && tNameNorm.includes(uNameNorm2)) ||
+                    (uNameNorm && tNameNorm.includes(uNameNorm)) ||
+                    (thread.ownerId === uid)
+                ) {
+                    foundThread = thread;
+                    break;
+                }
+            }
+
+            if (foundThread) {
+                db.db.run('UPDATE users SET thread_id = ? WHERE user_id = ?', [foundThread.id, uid]);
+                lostUser.thread_id = foundThread.id;
+                recoveredCount++;
+                log.push(`✅ ${lostUser.name} ➡️ <#${foundThread.id}>`);
+            } else {
+                log.push(`❌ ${lostUser.name}`);
+            }
+        }
+
+        db.save();
+
+        const resultMsg = `📊 **عدد العادات المسجلة بأمان في الداتابيز:** ${habitsCount} عادة.\n🎯 **تم ربط:** ${recoveredCount} مساحة بنجاح.\n\n${log.join('\n')}`.substring(0, 1900);
+        await interaction.editReply(resultMsg);
+
+    } catch (e) {
+        console.error('❌ Advanced Rescue Error:', e);
+        await interaction.editReply(`❌ حدث خطأ: ${e.message}`);
     }
 }
 
