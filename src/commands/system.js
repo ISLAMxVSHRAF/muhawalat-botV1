@@ -517,9 +517,9 @@ async function showDashboardPage(interaction, db, client, page) {
             .addFields(
                 { name: '👥 الأعضاء النشطين', value: `**${allUsers.length}**`, inline: true },
                 { name: '📦 مؤرشفين', value: `**${archived.length}**`, inline: true },
-                { name: '📝 تقارير امبارح', value: `**${todayReports}**`, inline: true },
-                { name: '🗓️ السيزون', value: seasonInfo, inline: true },
-                { name: '🔥 أعلى ستريك', value: topUser ? `**${topUser.name}** (${topUser.days_streak} يوم)` : 'لا يوجد', inline: true },
+                { name: '📝 تقارير امبارح', value: `**${todayReports}**`, inline: false },
+                { name: '🗓️ السيزون', value: seasonInfo, inline: false },
+                { name: '🔥 أعلى ستريك', value: topUser ? `**${topUser.name}** (${topUser.days_streak} يوم)` : 'لا يوجد', inline: false },
                 { name: '📈 إجمالي الأعضاء', value: `**${allUsers.length + archived.length}**`, inline: true }
             )
             .setFooter({ text: 'Muhawalat Dashboard • يتحدث عند كل ضغطة' });
@@ -656,7 +656,7 @@ async function showDashboardPage(interaction, db, client, page) {
 }
 
 async function dashboardExecute(interaction, { db, client }) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: 64 });
     await showDashboardPage(interaction, db, client, 'overview');
 }
 

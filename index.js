@@ -28,7 +28,8 @@ const {
     showCustomSetupModal,
     handleCustomSetup,
     showManualSetupModal,
-    handleManualSetup
+    handleManualSetup,
+    showDashboardPage
 } = require('./src/commands/system');
 const { handleAutoResponse, processScheduleAddModal, processAutorespondAddModal } = require('./src/commands/automation_cmds');
 const { handleDailyReportButton } = require('./src/commands/reports');
@@ -588,7 +589,6 @@ client.on('interactionCreate', async interaction => {
                     else targetPage = 'overview';
                 }
                 await interaction.deferUpdate();
-                const { showDashboardPage } = require('./src/commands/system');
                 return showDashboardPage(interaction, db, client, targetPage);
             }
             if (interaction.customId === 'dashboard_menu') {
