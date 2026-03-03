@@ -103,6 +103,32 @@ client.once('clientReady', async () => {
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
+    // Forward DM replies to admin channel
+    if (!message.guild) {
+        const adminChId = process.env.ADMIN_CHANNEL_ID;
+        if (adminChId) {
+            const adminCh = await client.channels.fetch(adminChId).catch(() => null);
+            if (adminCh) {
+                const user = db.getUser(message.author.id);
+                const name = user?.name || message.author.globalName || message.author.username;
+                const replyBtn = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`btn_dm_reply_${message.author.id}`)
+                        .setLabel('↩️ رد عليه')
+                        .setStyle(ButtonStyle.Primary)
+                );
+                await adminCh.send({
+                    content:
+                        `📩 **رد DM من عضو**\n` +
+                        `👤 **${name}** (<@${message.author.id}>)\n` +
+                        `💬 ${message.content}`,
+                    components: [replyBtn]
+                }).catch(() => {});
+            }
+        }
+        return;
+    }
+
     const dailyForumId = process.env.DAILY_REPORTS_FORUM_ID;
     if (db && dailyForumId && message.channel.parentId === dailyForumId) {
         const postData = db.getDailyPostByThread(message.channel.id);
@@ -591,6 +617,24 @@ client.on('interactionCreate', async interaction => {
                 await interaction.deferUpdate();
                 return showDashboardPage(interaction, db, client, targetPage);
             }
+            if (id.startsWith('btn_dm_reply_')) {
+                const targetUserId = id.replace('btn_dm_reply_', '');
+                const user = db.getUser(targetUserId);
+                const name = user?.name || 'عضو';
+                const modal = new ModalBuilder()
+                    .setCustomId(`modal_dm_reply_${targetUserId}`)
+                    .setTitle(`↩️ رد على ${name}`);
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(
+                        new TextInputBuilder()
+                            .setCustomId('dm_reply_text')
+                            .setLabel('نص الرد')
+                            .setStyle(TextInputStyle.Paragraph)
+                            .setRequired(true)
+                    )
+                );
+                return interaction.showModal(modal);
+            }
             if (interaction.customId === 'dashboard_menu') {
                 const choice = interaction.values[0];
                 if (choice === 'review_history') {
@@ -670,6 +714,20 @@ client.on('interactionCreate', async interaction => {
             if (id.startsWith('modal_schedule_add_')) return processScheduleAddModal(interaction, { automation });
             if (id.startsWith('modal_autorespond_add_')) return processAutorespondAddModal(interaction, { db });
             if (id.startsWith('modal_task_edit_')) return processTaskEditDeadlineModal(interaction, { db, client: interaction.client });
+            if (id.startsWith('modal_dm_reply_')) {
+                const targetUserId = id.replace('modal_dm_reply_', '');
+                await interaction.deferReply({ flags: 64 });
+                try {
+                    const text = interaction.fields.getTextInputValue('dm_reply_text').trim();
+                    const targetUser = await client.users.fetch(targetUserId).catch(() => null);
+                    if (!targetUser) return interaction.editReply('❌ مش لاقي المستخدم.');
+                    await targetUser.send(`📬 **رسالة من الإدارة:**\n${text}`);
+                    await interaction.editReply('✅ تم إرسال الرد بنجاح.');
+                } catch (e) {
+                    console.error('❌ dm_reply:', e.message);
+                    await interaction.editReply('❌ فشل إرسال الرد — ممكن الـ DM مقفول.').catch(() => {});
+                }
+            }
         }
     } catch (error) {
         console.error('❌ Interaction Error:', error);

@@ -14,6 +14,24 @@ const { updateDashboard } = require('../utils/dashboard');
 
 const ERR = CONFIG.ADMIN?.unifiedErrorMessage || '❌ حدث خطأ داخلي، تمت كتابة التفاصيل في السجل.';
 
+const NUDGE_MESSAGES = {
+    zero: [
+        'يا {name}، لاحظنا إنك مش معانا الفترة دي 🌱\nمش لازم يكون كامل — حتى تقرير صغير بيفرق.\nإحنا هنا لما ترجع 💙',
+        'يا {name}، افتقدنا تقاريرك! 🌿\nكل خطوة بتعملها بتفرق، ولو رجعت دلوقتي هيبقى أحسن من بكرة.\nمستنيينك 💪',
+        'يا {name}، السلسلة لسه ممكن تتعمر من جديد 🔗\nابدأ بتقرير واحد وشوف الفرق.\nإحنا معاك 🌟',
+    ],
+    danger: [
+        'يا {name}، أسبوعك شوية متقطع الفترة دي ⚠️\nفاضل كام يوم — لسه الوقت كافي تعوّض!\nشد حيلك معانا 💪',
+        'يا {name}، لاحظنا إن تقاريرك متقطعة 🟠\nالاستمرارية أهم من الكمال — كمّل ولو بخطوة صغيرة!\nإحنا بنتابعك 👀',
+        'يا {name}، عارف إن الأيام بتجي صعبة أحياناً 🌧️\nبس حتى في الأيام الصعبة — تقرير صغير بيفرق كتير.\nنتظر عودتك القوية! 🔥',
+    ],
+    good: [
+        'يا {name}، أداؤك كويس الأيام دي 🌟\nخطوة صغيرة كمان وتبقى في الفئة الأولى!\nاستمر، إحنا بنتابعك 👀',
+        'يا {name}، عاش على مجهودك! 💎\nالفرق بينك وبين الفئة الأولى صغير — شد كمان شوية!\nإحنا فخورين بيك 🏆',
+        'يا {name}، أداء محترم الأسبوع ده 🚀\nالثبات هو السر — كمل على نفس الوتيرة!\nمستنيين تقاريرك 💙',
+    ]
+};
+
 // ==========================================
 // ⚠️ issueWarning + helpers (from warnings.js)
 // ==========================================
@@ -488,12 +506,8 @@ async function handleRadarNudgeButton(interaction) {
             .setCustomId(`modal_radar_${type}_${days}`)
             .setTitle('رسالة التنبيه - رادار النشاط');
 
-        const defaultText =
-            type === 'zero'
-                ? 'مفتقدينك في التقرير اليومي الفترة اللي فاتت، مستنيين نشوف عودتك قريبًا 🌱'
-                : type === 'danger'
-                ? 'خدنا بالنا إن تقاريرك متقطعة الفترة دي، شد حيلك والتزم معانا أكتر! 💪'
-                : 'عاش جداً على مجهودك الأيام اللي فاتت! كمل على نفس المستوى وإحنا فخورين بيك 🌟';
+        const pool = NUDGE_MESSAGES[type] || NUDGE_MESSAGES.zero;
+        const defaultText = pool[Math.floor(Math.random() * pool.length)];
 
         const input = new TextInputBuilder()
             .setCustomId('radar_message')
@@ -611,10 +625,13 @@ async function executeRadarRouting(interaction, { db, client }) {
             let dmOk = false;
             let threadOk = false;
 
+            const userName = user.name || members.get(user.user_id)?.displayName || 'عضو';
+            const personalizedMessage = message.replace(/{name}/g, userName);
+
             if (method === 'dm' || method === 'both') {
                 try {
                     const dmUser = await client.users.fetch(user.user_id);
-                    await dmUser.send(message);
+                    await dmUser.send(personalizedMessage);
                     dmOk = true;
                     dmSent++;
                 } catch (_) {
@@ -627,7 +644,7 @@ async function executeRadarRouting(interaction, { db, client }) {
                     try {
                         const thread = await client.channels.fetch(user.thread_id);
                         if (thread) {
-                            await thread.send(message);
+                            await thread.send(personalizedMessage);
                             threadOk = true;
                             threadSent++;
                         }
