@@ -5,6 +5,7 @@
 
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const CONFIG = require('../config');
+const { updateDashboard } = require('../utils/dashboard');
 
 const ERR = CONFIG.ADMIN?.unifiedErrorMessage || '❌ حدث خطأ داخلي.';
 
@@ -319,11 +320,66 @@ async function processSyncChallengeModal(interaction, db, client) {
             return interaction.editReply('❌ فشل حفظ التحدي.');
         }
 
+        // Backfill existing messages
+        const allMessages = [];
+        let lastId = null;
+        while (true) {
+            const opts = { limit: 100 };
+            if (lastId) opts.before = lastId;
+            const batch = await thread.messages.fetch(opts);
+            if (!batch.size) break;
+            allMessages.push(...batch.values());
+            lastId = batch.last()?.id;
+            if (batch.size < 100) break;
+        }
+
+        const starter = await thread.fetchStarterMessage().catch(() => null);
+        const starterMsgId = starter?.id;
+
+        let backfilled = 0;
+        const seenUsers = new Set();
+
+        for (const msg of allMessages) {
+            if (msg.author.bot) continue;
+            if (starterMsgId && msg.id === starterMsgId) continue;
+            if (!msg.content.includes('✅')) continue;
+
+            const numMatch = msg.content.match(/\b(\d+)\b/);
+            if (!numMatch) continue;
+
+            const userId = msg.author.id;
+            if (seenUsers.has(userId)) continue; // خد أول رسالة صح بس
+            seenUsers.add(userId);
+
+            const minutes = parseInt(numMatch[1]);
+            const minMinutes = 0;
+            const challengeTime = totalPoints;
+            const maxAllowed = challengeTime;
+
+            if (minutes < minMinutes || minutes > maxAllowed) continue;
+
+            const points = minutes <= challengeTime
+                ? minutes
+                : challengeTime + Math.floor((minutes - challengeTime) / 5);
+
+            const msgDate = msg.createdAt.toISOString().split('T')[0];
+
+            if (!db.getUser(userId)) {
+                const member = await interaction.guild.members.fetch(userId).catch(() => null);
+                const name = member?.nickname || member?.user?.globalName || member?.user?.username || userId;
+                db.createUser(userId, name, '', 'male', null, null);
+            }
+
+            db.addChallengeLog(challengeId, userId, msgDate, minutes, points);
+            backfilled++;
+        }
+
         await interaction.editReply(
             `✅ **تم ربط التحدي** (ID: \`${challengeId}\`)\n\n` +
                 `📌 **${title}**\n` +
                 `📅 ${durationDays} يوم | ⏱️ ${totalPoints} دقيقة\n` +
-                `Thread: <#${threadId}>`
+                `Thread: <#${threadId}>\n` +
+                `📥 تم تسجيل ${backfilled} مشارك من الرسائل القديمة`
         );
     } catch (e) {
         console.error('❌ processSyncChallengeModal:', e);
@@ -643,7 +699,6 @@ async function handleChallengeMessage(message, challenge, db) {
         const user = db.getUser(userId);
         if (user?.thread_id) {
             try {
-                const { updateDashboard } = require('./dashboard');
                 const userThread = await message.channel.client.channels.fetch(user.thread_id).catch(() => null);
                 if (userThread) await updateDashboard(userThread, userId, db, 'challenges');
             } catch (_) {}
