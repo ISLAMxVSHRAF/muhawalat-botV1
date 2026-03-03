@@ -471,6 +471,7 @@ async function dbBackupExecute(interaction, { db } = {}) {
 }
 
 async function showDashboardPage(interaction, db, client, page) {
+    try {
     const guild = interaction.guild;
     const allUsers    = db.getAllUsers();
     const archived    = db.getArchivedUsers();
@@ -654,6 +655,15 @@ async function showDashboardPage(interaction, db, client, page) {
         await interaction.editReply({ embeds: [embed], components: [nav, actionRow] });
     } else {
         await interaction.reply({ embeds: [embed], components: [nav, actionRow], flags: 64 });
+    }
+    } catch (e) {
+        console.error('❌ showDashboardPage error:', e.message, e.stack);
+        const msg = { content: `❌ خطأ في الداشبورد: ${e.message}`, embeds: [], components: [] };
+        if (interaction.replied || interaction.deferred) {
+            await interaction.editReply(msg).catch(() => {});
+        } else {
+            await interaction.reply({ ...msg, flags: 64 }).catch(() => {});
+        }
     }
 }
 
