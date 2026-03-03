@@ -1,4 +1,4 @@
-const { MessageFlags, ChannelType, PermissionsBitField, EmbedBuilder } = require('discord.js');
+const { MessageFlags, ChannelType, PermissionsBitField, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { updateDashboard } = require('../utils/dashboard');
 const CONFIG = require('../config');
 
@@ -471,9 +471,6 @@ async function dbBackupExecute(interaction, { db } = {}) {
 }
 
 async function showDashboardPage(interaction, db, client, page) {
-    const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-    const CONFIG = require('../config');
-
     const guild = interaction.guild;
     const allUsers    = db.getAllUsers();
     const archived    = db.getArchivedUsers();
@@ -652,7 +649,12 @@ async function showDashboardPage(interaction, db, client, page) {
         );
     }
 
-    await interaction.editReply({ embeds: [embed], components: [nav, actionRow] });
+    // Handle both slash command (deferReply) and button (deferUpdate) interactions
+    if (interaction.replied || interaction.deferred) {
+        await interaction.editReply({ embeds: [embed], components: [nav, actionRow] });
+    } else {
+        await interaction.reply({ embeds: [embed], components: [nav, actionRow], flags: 64 });
+    }
 }
 
 async function dashboardExecute(interaction, { db, client }) {
