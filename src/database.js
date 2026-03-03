@@ -524,7 +524,13 @@ class MuhawalatDatabase {
     // CONFIG
     // ==========================================
     setConfig(guildId, forumId, achieveId) {
-        this.db.run(`INSERT OR REPLACE INTO config VALUES (?,?,?)`, [guildId, forumId, achieveId]);
+        this.db.run(`
+            INSERT INTO config (guild_id, forum_id, achieve_id)
+            VALUES (?, ?, ?)
+            ON CONFLICT(guild_id) DO UPDATE SET
+                forum_id  = excluded.forum_id,
+                achieve_id = excluded.achieve_id
+        `, [guildId, forumId, achieveId]);
         this.save();
     }
 
