@@ -160,6 +160,25 @@ async function clearWarnsExecute(interaction, { db, client }) {
         const userId = userOpt.id;
         const user = db.getUser(userId);
         if (!user) return editReply(interaction, '❌ العضو غير مسجل في النظام.');
+        
+        // Safety: Add confirmation and backup before clearing warnings
+        const { createConfirmation } = require('../utils/embeds');
+        
+        await interaction.editReply({ content: '⏳ جارٍ التحضير...' });
+        
+        const confirmed = await createConfirmation(interaction, {
+            title: '⚠️ تأكيد مسح الإنذارات',
+            description: `سيتم مسح **كل** إنذارات <@${userId}> (${userOpt.username}).\n\n**هذه العملية لا يمكن التراجع عنها.**`,
+            confirmLabel: '✅ نعم، امسح كل الإنذارات',
+            cancelLabel: '❌ إلغاء'
+        });
+        
+        if (!confirmed) return; // user cancelled or timed out
+        
+        // Auto-backup before executing
+        db.safeBackup('before-clear-warnings');
+        
+        // Execute the destructive operation
         db.clearWarnings(userId);
         await editReply(interaction, `✅ تم مسح كل إنذارات **${userOpt.username}**`);
         const thread = await client.channels.fetch(user.thread_id).catch(() => null);
@@ -696,6 +715,201 @@ async function cleanDepartedExecute(interaction, { db, client }) {
     }
 }
 
+// ==========================================
+// 🗄️ ARCHIVE/RESTORE SYSTEM - Member Archive/Restore
+// ==========================================
+
+async function archiveExecute(interaction, { db, client }) {
+    await interaction.deferReply({ ephemeral: true });
+    
+    try {
+        const userOpt = interaction.options.getUser('user');
+        const userId = userOpt.id;
+        const user = db.getUser(userId);
+        
+        if (!user) {
+            return interaction.editReply('❌ العضو غير مسجل في النظام.');
+        }
+        
+        if (user.status === 'archived') {
+            return interaction.editReply('⚠️ هذا العضو مجمد بالفعل.');
+        }
+        
+        // Safety: Add confirmation before archiving
+        const { createConfirmation } = require('../utils/embeds');
+        
+        await interaction.editReply({ content: '⏳ جارٍ التحضير...' });
+        
+        const confirmed = await createConfirmation(interaction, {
+            title: '⚠️ تجميد عضو',
+            description: `سيتم تجميد ${user.name} وأرشفة مساحته. يمكن استعادته لاحقاً.`,
+            confirmLabel: '✅ نعم، جمّد العضو',
+            cancelLabel: '❌ إلغاء'
+        });
+        
+        if (!confirmed) return;
+        
+        // Auto-backup before executing
+        db.safeBackup('before-archive');
+        
+        // Archive the user
+        db.archiveUser(userId);
+        
+        // Archive the thread if it exists
+        if (user.thread_id) {
+            try {
+                const thread = await client.channels.fetch(user.thread_id).catch(() => null);
+                if (thread) {
+                    await thread.setArchived(true).catch(() => {});
+                }
+            } catch (e) {
+                console.error('❌ Archive thread error:', e.message);
+            }
+        }
+        
+        await interaction.editReply(`✅ تم تجميد ${user.name} وأرشفة مساحته.`);
+        
+    } catch (e) {
+        console.error('❌ archiveExecute error:', e);
+        await interaction.editReply('❌ حدث خطأ أثناء تجميد العضو.');
+    }
+}
+
+async function restoreExecute(interaction, { db, client }) {
+    await interaction.deferReply({ ephemeral: true });
+    
+    try {
+        const userOpt = interaction.options.getUser('user');
+        const userId = userOpt.id;
+        const user = db.getUser(userId);
+        
+        if (!user) {
+            return interaction.editReply('❌ العضو غير مسجل في النظام.');
+        }
+        
+        if (user.status !== 'archived') {
+            return interaction.editReply('⚠️ هذا العضو ليس مجمداً.');
+        }
+        
+        // Restore the user
+        db.restoreUser(userId);
+        
+        // Try to unarchive their thread
+        if (user.thread_id) {
+            try {
+                const thread = await client.channels.fetch(user.thread_id).catch(() => null);
+                if (thread) {
+                    if (thread.archived) {
+                        await thread.setArchived(false).catch(() => {});
+                    }
+                    // Rebuild dashboard
+                    const { updateDashboard } = require('../handlers/onboarding');
+                    await updateDashboard(thread, userId, db);
+                    return interaction.editReply(`✅ تم استعادة ${user.name}. مساحته: <#${user.thread_id}>`);
+                }
+            } catch (e) {
+                console.error('❌ Restore thread error:', e.message);
+            }
+        }
+        
+        await interaction.editReply(`✅ تم استعادة ${user.name}.`);
+        
+    } catch (e) {
+        console.error('❌ restoreExecute error:', e);
+        await interaction.editReply('❌ حدث خطأ أثناء استعادة العضو.');
+    }
+}
+
+async function deleteExecute(interaction, { db, client }) {
+    await interaction.deferReply({ ephemeral: true });
+    
+    try {
+        const userOpt = interaction.options.getUser('user');
+        const userId = userOpt.id;
+        const user = db.getUser(userId);
+        
+        if (!user) {
+            return interaction.editReply('❌ العضو غير مسجل في النظام.');
+        }
+        
+        // Safety: Add confirmation before permanent deletion
+        const { createConfirmation } = require('../utils/embeds');
+        
+        await interaction.editReply({ content: '⏳ جارٍ التحضير...' });
+        
+        const confirmed = await createConfirmation(interaction, {
+            title: '🗑️ حذف نهائي',
+            description: `سيتم حذف كل بيانات ${user.name} نهائياً. **لا يمكن التراجع.**`,
+            confirmLabel: '🗑️ نعم، احذف نهائياً',
+            cancelLabel: '❌ إلغاء'
+        });
+        
+        if (!confirmed) return;
+        
+        // Auto-backup before executing
+        db.safeBackup('before-permanent-delete');
+        
+        // Delete the thread if it exists
+        if (user.thread_id) {
+            try {
+                const thread = await client.channels.fetch(user.thread_id).catch(() => null);
+                if (thread) {
+                    await thread.delete().catch(() => {});
+                }
+            } catch (e) {
+                console.error('❌ Delete thread error:', e.message);
+            }
+        }
+        
+        // Permanently delete user data
+        db.deleteUserPermanently(userId);
+        
+        await interaction.editReply(`✅ تم الحذف النهائي لبيانات ${user.name}.`);
+        
+    } catch (e) {
+        console.error('❌ deleteExecute error:', e);
+        await interaction.editReply('❌ حدث خطأ أثناء حذف العضو.');
+    }
+}
+
+async function archivedExecute(interaction, { db }) {
+    await interaction.deferReply({ ephemeral: true });
+    
+    try {
+        const archivedUsers = db.getArchivedUsers();
+        
+        if (!archivedUsers.length) {
+            return interaction.editReply('لا يوجد أعضاء مجمّدون حالياً.');
+        }
+        
+        const { EmbedBuilder } = require('discord.js');
+        const CONFIG = require('../config');
+        
+        const embed = new EmbedBuilder()
+            .setColor(CONFIG.COLORS.warning)
+            .setTitle('🗄️ الأعضاء المجمّدون')
+            .setDescription(`قائمة الأعضاء المجمدين (${archivedUsers.length} عضو)`)
+            .setTimestamp();
+        
+        for (const user of archivedUsers) {
+            const createdDate = user.created_at ? new Date(user.created_at).toLocaleDateString('ar-EG') : 'غير معروف';
+            const threadInfo = user.thread_id ? `<#${user.thread_id}>` : 'لا يوجد مساحة';
+            
+            embed.addFields({
+                name: `${user.name} (<@${user.user_id}>)`,
+                value: `📅 انضم: ${createdDate}\n🧵 المساحة: ${threadInfo}`,
+                inline: false
+            });
+        }
+        
+        await interaction.editReply({ embeds: [embed] });
+        
+    } catch (e) {
+        console.error('❌ archivedExecute error:', e);
+        await interaction.editReply('❌ حدث خطأ أثناء عرض الأعضاء المجمدة.');
+    }
+}
+
 async function handleUsers(interaction, deps) {
     const sub = interaction.options.getSubcommand();
     switch (sub) {
@@ -717,6 +931,14 @@ async function handleUsers(interaction, deps) {
             return radarExecute(interaction, deps);
         case 'clean_departed':
             return cleanDepartedExecute(interaction, deps);
+        case 'archive':
+            return archiveExecute(interaction, deps);
+        case 'restore':
+            return restoreExecute(interaction, deps);
+        case 'delete':
+            return deleteExecute(interaction, deps);
+        case 'archived':
+            return archivedExecute(interaction, deps);
         default:
             throw new Error(`Unknown users subcommand: ${sub}`);
     }

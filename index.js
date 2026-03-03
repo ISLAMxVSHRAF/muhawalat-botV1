@@ -142,17 +142,21 @@ client.on('messageCreate', async message => {
 
         if (words.length >= 15) {
             // سجّل أو حدّث العضو
-            if (!db.getUser(message.author.id)) {
+            if (!db.getActiveUser(message.author.id)) {
                 const name = message.member?.nickname || message.author.globalName || message.author.username;
                 db.createUser(message.author.id, name, '', 'male', null, null);
             } else {
                 const newName = message.member?.nickname || message.author.globalName || message.author.username;
                 const existing = db.getUser(message.author.id);
+                // Block archived users from submitting
+                if (existing && existing.status === 'archived') return;
                 if (existing.name !== newName) db.updateUser(message.author.id, { name: newName });
             }
             db.recordDailyReport(message.author.id, message.channel.id, message.content, words.length, postDate);
             await message.react('👏').catch(() => {});
             const user = db.getUser(message.author.id);
+            // Block archived users from submitting
+            if (user && user.status === 'archived') return;
             // ✅ رسالة تأكيد تشجيعية مؤقتة
             const isFemale = user?.gender === 'female';
             const name = user?.name || '';
@@ -181,12 +185,14 @@ client.on('messageCreate', async message => {
                 const completions = db.getUserTaskCompletions(task.id, message.author.id);
                 if (completions < 2) {
                     // تحديث اسم العضو
-                    if (!db.getUser(message.author.id)) {
+                    if (!db.getActiveUser(message.author.id)) {
                         const name = message.member?.nickname || message.author.globalName || message.author.username;
                         db.createUser(message.author.id, name, '', 'male', null, null);
                     } else {
                         const newName = message.member?.nickname || message.author.globalName || message.author.username;
                         const existing = db.getUser(message.author.id);
+                        // Block archived users from submitting
+                        if (existing && existing.status === 'archived') return;
                         if (existing.name !== newName) db.updateUser(message.author.id, { name: newName });
                     }
 
@@ -202,6 +208,8 @@ client.on('messageCreate', async message => {
                     if (m) setTimeout(() => m.delete().catch(() => {}), 10000);
 
                     const user = db.getUser(message.author.id);
+                    // Block archived users from submitting
+                    if (user && user.status === 'archived') return;
                     if (user?.thread_id) {
                         const userThread = await client.channels.fetch(user.thread_id).catch(() => null);
                         if (userThread) await updateDashboard(userThread, message.author.id, db);

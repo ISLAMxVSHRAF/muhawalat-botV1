@@ -199,6 +199,25 @@ async function autorespondDeleteExecute(interaction, { db }) {
             return interaction.editReply(
                 '❌ يرجى إدخال رقم صحيح (معرف الرد).'
             );
+        
+        // Safety: Add confirmation and backup before deleting auto response
+        const { createConfirmation } = require('../utils/embeds');
+        
+        await interaction.editReply({ content: '⏳ جارٍ التحضير...' });
+        
+        const confirmed = await createConfirmation(interaction, {
+            title: '⚠️ تأكيد حذف الرد التلقائي',
+            description: `سيتم حذف الرد التلقائي رقم **#${id}**.\n\n**هذه العملية لا يمكن التراجع عنها.**`,
+            confirmLabel: '✅ نعم، احذف الرد',
+            cancelLabel: '❌ إلغاء'
+        });
+        
+        if (!confirmed) return; // user cancelled or timed out
+        
+        // Auto-backup before executing
+        db.safeBackup('before-delete-autoresponse');
+        
+        // Execute the destructive operation
         db.deleteAutoResponse(id);
         invalidateCache();
         await interaction.editReply(
@@ -419,6 +438,25 @@ async function scheduleDeleteExecute(interaction, { db, automation }) {
             return interaction.editReply(
                 '❌ يرجى إدخال رقم صحيح (معرف الجدولة).'
             );
+        
+        // Safety: Add confirmation and backup before deleting scheduled message
+        const { createConfirmation } = require('../utils/embeds');
+        
+        await interaction.editReply({ content: '⏳ جارٍ التحضير...' });
+        
+        const confirmed = await createConfirmation(interaction, {
+            title: '⚠️ تأكيد حذف الرسالة المجدولة',
+            description: `سيتم حذف الرسالة المجدولة رقم **#${id}**.\n\n**هذه العملية لا يمكن التراجع عنها.**`,
+            confirmLabel: '✅ نعم، احذف الرسالة',
+            cancelLabel: '❌ إلغاء'
+        });
+        
+        if (!confirmed) return; // user cancelled or timed out
+        
+        // Auto-backup before executing
+        db.safeBackup('before-delete-scheduled-message');
+        
+        // Execute the destructive operation
         automation.toggleScheduledMessage(id, false);
         db.deleteScheduledMessage(id);
         await interaction.editReply(

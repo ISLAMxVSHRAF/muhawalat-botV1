@@ -3,7 +3,7 @@
 // دوال لإنشاء Embeds جاهزة
 // ==========================================
 
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder } = require('discord.js');
 const CONFIG = require('../config');
 const { generateWeeklyGraph, getRankInfo } = require('./dashboard');
 
@@ -207,6 +207,47 @@ function createChallengeWinnersEmbed(challenge, top3) {
         .setTimestamp();
 }
 
+// ==========================================
+// ⚠️ CONFIRMATION DIALOG - تأكيد العمليات الخطرة
+// ==========================================
+
+async function createConfirmation(interaction, options = {}) {
+    const {
+        title = '⚠️ تأكيد العملية',
+        description = 'هل أنت متأكد؟',
+        confirmLabel = '✅ نعم، نفّذ',
+        cancelLabel = '❌ إلغاء',
+        timeoutMs = 30000
+    } = options;
+
+    const confirmId = `confirm_yes_${Date.now()}`;
+    const cancelId  = `confirm_no_${Date.now()}`;
+
+    const embed = new EmbedBuilder()
+        .setColor('#FAA61A')
+        .setTitle(title)
+        .setDescription(description + '\n\n*ستنتهي صلاحية هذا الطلب خلال 30 ثانية.*');
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(confirmId).setLabel(confirmLabel).setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(cancelId).setLabel(cancelLabel).setStyle(ButtonStyle.Secondary)
+    );
+
+    const reply = await interaction.editReply({ embeds: [embed], components: [row] });
+
+    try {
+        const collected = await reply.awaitMessageComponent({
+            filter: i => i.user.id === interaction.user.id && [confirmId, cancelId].includes(i.customId),
+            time: timeoutMs
+        });
+        await collected.deferUpdate();
+        return collected.customId === confirmId;
+    } catch {
+        await interaction.editReply({ content: '⏱️ انتهى وقت التأكيد، تم الإلغاء.', embeds: [], components: [] }).catch(() => {});
+        return false;
+    }
+}
+
 module.exports = {
     createStatsEmbed,
     createAchieversEmbed,
@@ -214,5 +255,6 @@ module.exports = {
     createLeaderboardEmbed,
     createErrorEmbed,
     createSuccessEmbed,
-    createChallengeWinnersEmbed
+    createChallengeWinnersEmbed,
+    createConfirmation
 };

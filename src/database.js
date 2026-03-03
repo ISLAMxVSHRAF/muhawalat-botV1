@@ -31,6 +31,7 @@ class MuhawalatDatabase {
         }
         this.initTables();
         this.runMigrations();
+        this.runPhase3Migration();
         this.saveImmediate();
     }
 
@@ -57,6 +58,33 @@ class MuhawalatDatabase {
             fs.renameSync(tmpPath, this.dbPath);
         } catch (e) {
             console.error('❌ DB Save Error:', e.message);
+        }
+    }
+
+    safeBackup(label = 'manual') {
+        try {
+            if (this.dbPath === ':memory:') return null;
+            const fs = require('fs');
+            const path = require('path');
+            const backupDir = path.join(path.dirname(this.dbPath), 'backups');
+            if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const backupName = `muhawalat.${label}.${timestamp}.db`;
+            const dest = path.join(backupDir, backupName);
+            this.saveImmediate();
+            fs.copyFileSync(this.dbPath, dest);
+            // Keep only last 20 backups
+            const all = fs.readdirSync(backupDir)
+                .filter(f => f.startsWith('muhawalat.') && f.endsWith('.db'))
+                .sort().reverse();
+            if (all.length > 20) {
+                all.slice(20).forEach(old => fs.unlinkSync(path.join(backupDir, old)));
+            }
+            console.log(`✅ Safe backup created: ${backupName}`);
+            return backupName;
+        } catch (e) {
+            console.error('❌ safeBackup failed:', e.message);
+            return null;
         }
     }
 
@@ -337,11 +365,37 @@ class MuhawalatDatabase {
             `ALTER TABLE daily_reports ADD COLUMN content TEXT`,
             `ALTER TABLE daily_reports ADD COLUMN word_count INTEGER`,
             `ALTER TABLE users ADD COLUMN goals_migrated INTEGER DEFAULT 0`,
+            `ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'active'`,
+            // Phase 3 migrations
+            `ALTER TABLE users ADD COLUMN total_done INTEGER DEFAULT 0`,
+            `ALTER TABLE users ADD COLUMN days_streak INTEGER DEFAULT 0`,
+            `ALTER TABLE users ADD COLUMN achieved_today INTEGER DEFAULT 0`,
+            `ALTER TABLE users ADD COLUMN last_active TEXT DEFAULT CURRENT_TIMESTAMP`,
+            `ALTER TABLE journals ADD COLUMN type TEXT DEFAULT 'general'`,
+            `ALTER TABLE journals ADD COLUMN sentiment TEXT DEFAULT 'neutral'`,
+            `ALTER TABLE custom_months ADD COLUMN guild_id TEXT`,
+            `ALTER TABLE config ADD COLUMN daily_reports_forum_id TEXT`,
+            `ALTER TABLE config ADD COLUMN weekly_tasks_forum_id TEXT`,
+            `ALTER TABLE config ADD COLUMN monthly_tasks_forum_id TEXT`,
+            `ALTER TABLE config ADD COLUMN challenges_forum_id TEXT`,
+            `ALTER TABLE config ADD COLUMN leaderboard_channel_id TEXT`,
+            `ALTER TABLE config ADD COLUMN notify_corner_id TEXT`,
+            `ALTER TABLE config ADD COLUMN admin_channel_id TEXT`,
+            `ALTER TABLE config ADD COLUMN general_channel_id TEXT`,
+            `ALTER TABLE config ADD COLUMN member_role_id TEXT`,
+            `ALTER TABLE config ADD COLUMN admin_role_id TEXT`,
         ];
         for (const sql of cols) {
             try { this.db.run(sql); } catch (e) {
                 if (!e.message.includes('duplicate column')) console.warn('⚠️ Migration:', e.message);
             }
+        }
+
+        // Add index for status column
+        try {
+            this.db.run(`CREATE INDEX IF NOT EXISTS idx_users_status ON users(status)`);
+        } catch (e) {
+            console.warn('⚠️ Status index creation:', e.message);
         }
 
         // إنشاء جدول daily_reports لو مش موجود (للقواعد القديمة)
@@ -456,6 +510,171 @@ class MuhawalatDatabase {
     }
 
     // ==========================================
+    // 🔄 PHASE 3 MIGRATION - Database Cleanup & Consolidation
+    // ==========================================
+    runPhase3Migration() {
+        // Critical: Create backup before any migration
+        this.safeBackup('before-phase3-migration');
+        
+        try {
+            console.log('🔄 Starting Phase 3 Database Migration...');
+            
+            // Task 1: Merge 4 report tables into 1
+            this._migrateReports();
+            
+            // Task 2: Merge users + stats
+            this._mergeUsersStats();
+            
+            // Task 3: Merge weekly_goals into goals
+            this._mergeWeeklyGoals();
+            
+            // Task 4: Merge journal_logs into journals
+            this._mergeJournalLogs();
+            
+            console.log('✅ Phase 3 Migration completed successfully');
+        } catch (error) {
+            console.error('❌ Phase 3 Migration failed:', error.message);
+            throw error;
+        }
+    }
+
+    _migrateReports() {
+        console.log('📊 Migrating reports tables...');
+        
+        // Create new unified reports table
+        this.db.run(`CREATE TABLE IF NOT EXISTS reports (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     TEXT NOT NULL,
+            type        TEXT NOT NULL,
+            report_date TEXT NOT NULL,
+            thread_id   TEXT,
+            channel_id  TEXT,
+            content     TEXT,
+            word_count  INTEGER,
+            recorded_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, type, report_date)
+        )`);
+        this.db.run(`CREATE INDEX IF NOT EXISTS idx_reports_user_type_date ON reports(user_id, type, report_date)`);
+        
+        // Migrate data in transaction
+        this.db.run('BEGIN TRANSACTION');
+        try {
+            // Migrate daily reports
+            this.db.run(`INSERT OR IGNORE INTO reports (user_id, type, report_date, thread_id, content, word_count, recorded_at)
+                SELECT user_id, 'daily', report_date, thread_id, content, word_count, recorded_at FROM daily_reports`);
+            
+            // Migrate weekly reports
+            this.db.run(`INSERT OR IGNORE INTO reports (user_id, type, report_date, channel_id, content, word_count, recorded_at)
+                SELECT user_id, 'weekly', report_date, channel_id, content, word_count, recorded_at FROM weekly_reports`);
+            
+            // Migrate monthly reports
+            this.db.run(`INSERT OR IGNORE INTO reports (user_id, type, report_date, channel_id, content, word_count, recorded_at)
+                SELECT user_id, 'monthly', report_date, channel_id, content, word_count, recorded_at FROM monthly_reports`);
+            
+            // Migrate yearly reports
+            this.db.run(`INSERT OR IGNORE INTO reports (user_id, type, report_date, channel_id, content, word_count, recorded_at)
+                SELECT user_id, 'yearly', report_date, channel_id, content, word_count, recorded_at FROM yearly_reports`);
+            
+            this.db.run('COMMIT');
+        } catch (e) {
+            this.db.run('ROLLBACK');
+            throw e;
+        }
+        
+        // Drop old tables and create VIEWs
+        this.db.run('DROP TABLE IF EXISTS daily_reports');
+        this.db.run('CREATE VIEW IF NOT EXISTS daily_reports AS SELECT id, user_id, report_date, thread_id, content, word_count, recorded_at FROM reports WHERE type=\'daily\'');
+        
+        this.db.run('DROP TABLE IF EXISTS weekly_reports');
+        this.db.run('CREATE VIEW IF NOT EXISTS weekly_reports AS SELECT id, user_id, report_date, channel_id, content, word_count, recorded_at FROM reports WHERE type=\'weekly\'');
+        
+        this.db.run('DROP TABLE IF EXISTS monthly_reports');
+        this.db.run('CREATE VIEW IF NOT EXISTS monthly_reports AS SELECT id, user_id, report_date, channel_id, content, word_count, recorded_at FROM reports WHERE type=\'monthly\'');
+        
+        this.db.run('DROP TABLE IF EXISTS yearly_reports');
+        this.db.run('CREATE VIEW IF NOT EXISTS yearly_reports AS SELECT id, user_id, report_date, channel_id, content, word_count, recorded_at FROM reports WHERE type=\'yearly\'');
+        
+        console.log('✅ Reports migration completed');
+    }
+
+    _mergeUsersStats() {
+        console.log('👥 Merging users and stats tables...');
+        
+        // Migrate stats data in transaction
+        this.db.run('BEGIN TRANSACTION');
+        try {
+            this.db.run(`UPDATE users SET
+                total_done     = COALESCE((SELECT total_done FROM stats WHERE stats.user_id = users.user_id), 0),
+                days_streak    = COALESCE((SELECT days_streak FROM stats WHERE stats.user_id = users.user_id), 0),
+                achieved_today = COALESCE((SELECT achieved_today FROM stats WHERE stats.user_id = users.user_id), 0),
+                last_active    = COALESCE((SELECT last_active FROM stats WHERE stats.user_id = users.user_id), CURRENT_TIMESTAMP)
+            WHERE EXISTS (SELECT 1 FROM stats WHERE stats.user_id = users.user_id)`);
+            
+            this.db.run('COMMIT');
+        } catch (e) {
+            this.db.run('ROLLBACK');
+            throw e;
+        }
+        
+        // Drop stats table and create VIEW
+        this.db.run('DROP TABLE IF EXISTS stats');
+        this.db.run(`CREATE VIEW IF NOT EXISTS stats AS
+            SELECT user_id, total_done, days_streak, achieved_today, last_active FROM users`);
+        
+        console.log('✅ Users/Stats merge completed');
+    }
+
+    _mergeWeeklyGoals() {
+        console.log('🎯 Merging weekly_goals into goals...');
+        
+        // Migrate data in transaction
+        this.db.run('BEGIN TRANSACTION');
+        try {
+            this.db.run(`INSERT OR IGNORE INTO goals (user_id, goal_text, goal_type, period, is_active, created_at)
+                SELECT user_id, goal_text, 'weekly', week_start,
+                       CASE WHEN completed = 0 THEN 1 ELSE 0 END,
+                       CURRENT_TIMESTAMP
+                FROM weekly_goals
+                WHERE goal_text IS NOT NULL AND goal_text != ''`);
+            
+            this.db.run('COMMIT');
+        } catch (e) {
+            this.db.run('ROLLBACK');
+            throw e;
+        }
+        
+        // Drop weekly_goals and create VIEW
+        this.db.run('DROP TABLE IF EXISTS weekly_goals');
+        this.db.run(`CREATE VIEW IF NOT EXISTS weekly_goals AS
+            SELECT id, user_id, goal_text, period AS week_start, is_active AS completed FROM goals WHERE goal_type='weekly'`);
+        
+        console.log('✅ Weekly goals merge completed');
+    }
+
+    _mergeJournalLogs() {
+        console.log('📔 Merging journal_logs into journals...');
+        
+        // Migrate data in transaction
+        this.db.run('BEGIN TRANSACTION');
+        try {
+            this.db.run(`INSERT OR IGNORE INTO journals (user_id, content, type, sentiment, created_at)
+                SELECT user_id, content, type, sentiment, date FROM journal_logs`);
+            
+            this.db.run('COMMIT');
+        } catch (e) {
+            this.db.run('ROLLBACK');
+            throw e;
+        }
+        
+        // Drop journal_logs and create VIEW
+        this.db.run('DROP TABLE IF EXISTS journal_logs');
+        this.db.run(`CREATE VIEW IF NOT EXISTS journal_logs AS
+            SELECT id, user_id, type, content, created_at AS date, sentiment FROM journals`);
+        
+        console.log('✅ Journal logs merge completed');
+    }
+
+    // ==========================================
     // CONFIG
     // ==========================================
     setConfig(guildId, forumId, achieveId) {
@@ -519,36 +738,41 @@ class MuhawalatDatabase {
                     name=excluded.name, bio=excluded.bio,
                     goal=excluded.goal, gender=excluded.gender, thread_id=excluded.thread_id
             `, [userId, name, bio, goal || bio, gender, threadId]);
-            this.db.run(`INSERT OR IGNORE INTO stats (user_id) VALUES (?)`, [userId]);
+            // Stats are now part of users table, no separate INSERT needed
             this.save();
         } catch (e) { console.error('❌ createUser:', e.message); }
     }
 
     getUser(userId) {
         const s = this.db.prepare(`
-            SELECT u.user_id, u.name, u.bio, u.goal, u.gender, u.thread_id, u.daily_msg,
-                   u.warning_count, u.last_warning_date, u.daily_review_count, u.streak_freeze,
-                   u.freeze_habits, u.freeze_reports, u.created_at,
-                   s.total_done, s.days_streak, s.achieved_today, s.last_active
-            FROM users u
-            LEFT JOIN stats s ON u.user_id = s.user_id
-            WHERE u.user_id = ?
+            SELECT user_id, name, bio, goal, gender, thread_id, daily_msg,
+                   warning_count, last_warning_date, daily_review_count, streak_freeze,
+                   freeze_habits, freeze_reports, created_at, status,
+                   total_done, days_streak, achieved_today, last_active
+            FROM users
+            WHERE user_id = ?
         `);
         s.bind([userId]);
         const r = s.step() ? s.getAsObject() : null;
         s.free(); return r;
+        // Note: Archived users ARE returned by getUser (so restore flow works)
+    }
+
+    // Helper to get only active users (excludes archived)
+    getActiveUser(userId) {
+        const user = this.getUser(userId);
+        return user?.status === 'active' ? user : null;
     }
 
     // ✅ جيب يوزر عن طريق thread_id (لإصلاح btn_refresh وتحقق صاحب المساحة)
     getUserByThread(threadId) {
         const s = this.db.prepare(`
-            SELECT u.user_id, u.name, u.bio, u.goal, u.gender, u.thread_id, u.daily_msg,
-                   u.warning_count, u.last_warning_date, u.daily_review_count, u.streak_freeze,
-                   u.freeze_habits, u.freeze_reports, u.created_at,
-                   s.total_done, s.days_streak, s.achieved_today, s.last_active
-            FROM users u
-            LEFT JOIN stats s ON u.user_id = s.user_id
-            WHERE u.thread_id = ?
+            SELECT user_id, name, bio, goal, gender, thread_id, daily_msg,
+                   warning_count, last_warning_date, daily_review_count, streak_freeze,
+                   freeze_habits, freeze_reports, created_at,
+                   total_done, days_streak, achieved_today, last_active
+            FROM users
+            WHERE thread_id = ?
         `);
         s.bind([threadId]);
         const r = s.step() ? s.getAsObject() : null;
@@ -556,7 +780,7 @@ class MuhawalatDatabase {
     }
 
     updateUser(userId, fields) {
-        const allowed = ['name','bio','goal','gender','thread_id','warning_count','last_warning_date','daily_review_count','daily_msg','streak_freeze','freeze_habits','freeze_reports'];
+        const allowed = ['name','bio','goal','gender','thread_id','warning_count','last_warning_date','daily_review_count','daily_msg','streak_freeze','freeze_habits','freeze_reports','status'];
         const sets = [], vals = [];
         for (const [k, v] of Object.entries(fields)) {
             if (allowed.includes(k)) { sets.push(`${k} = ?`); vals.push(v); }
@@ -567,12 +791,45 @@ class MuhawalatDatabase {
         this.save();
     }
 
+    // Archive a member (freeze in DB)
+    archiveUser(userId) {
+        this.db.run(`UPDATE users SET status='archived' WHERE user_id=?`, [userId]);
+        this.save();
+    }
+
+    // Restore an archived member
+    restoreUser(userId) {
+        this.db.run(`UPDATE users SET status='active' WHERE user_id=?`, [userId]);
+        this.save();
+    }
+
+    // Hard delete a member (only called after confirmation + backup)
+    deleteUserPermanently(userId) {
+        const tables = ['habits', 'stats', 'daily_history', 'achievements', 'goals',
+                        'daily_reports', 'warnings_log', 'timeout_pending', 'freezes_log',
+                        'journal_logs', 'journals', 'weekly_goals'];
+        for (const table of tables) {
+            try { this.db.run(`DELETE FROM ${table} WHERE user_id=?`, [userId]); } catch(e) {}
+        }
+        this.db.run(`DELETE FROM users WHERE user_id=?`, [userId]);
+        this.save();
+    }
+
+    // Get all archived members
+    getArchivedUsers() {
+        const s = this.db.prepare(`SELECT user_id, name, gender, thread_id, created_at FROM users WHERE status='archived' ORDER BY name`);
+        const rows = [];
+        while (s.step()) rows.push(s.getAsObject());
+        s.free();
+        return rows;
+    }
+
     getAllUsers() {
         const s = this.db.prepare(`
-            SELECT u.user_id, u.name, u.bio, u.goal, u.gender, u.thread_id,
-                   u.warning_count, u.daily_review_count, u.streak_freeze, u.freeze_habits, u.freeze_reports,
-                   s.total_done, s.days_streak, s.achieved_today
-            FROM users u LEFT JOIN stats s ON u.user_id = s.user_id
+            SELECT user_id, name, bio, goal, gender, thread_id,
+                   warning_count, daily_review_count, streak_freeze, freeze_habits, freeze_reports,
+                   total_done, days_streak, achieved_today
+            FROM users
         `);
         const r = [];
         while (s.step()) r.push(s.getAsObject());
@@ -617,23 +874,23 @@ class MuhawalatDatabase {
         try {
             const reportDateToUse = reportDate || this.getCairoLogicalDate(); // YYYY-MM-DD
             this.db.run(`
-                INSERT INTO daily_reports (user_id, report_date, thread_id, content, word_count)
-                VALUES (?,?,?,?,?)
-                ON CONFLICT(user_id, report_date) DO UPDATE SET
+                INSERT INTO reports (user_id, type, report_date, thread_id, content, word_count)
+                VALUES (?,?,?,?,?,?)
+                ON CONFLICT(user_id, type, report_date) DO UPDATE SET
                     thread_id = excluded.thread_id,
                     content = CASE
                         WHEN excluded.content IS NOT NULL
-                             AND (daily_reports.content IS NULL OR length(excluded.content) > length(daily_reports.content))
+                             AND (reports.content IS NULL OR length(excluded.content) > length(reports.content))
                         THEN excluded.content
-                        ELSE daily_reports.content
+                        ELSE reports.content
                     END,
                     word_count = CASE
                         WHEN excluded.word_count IS NOT NULL
-                             AND (daily_reports.word_count IS NULL OR excluded.word_count > daily_reports.word_count)
+                             AND (reports.word_count IS NULL OR excluded.word_count > reports.word_count)
                         THEN excluded.word_count
-                        ELSE daily_reports.word_count
+                        ELSE reports.word_count
                     END
-            `, [userId, reportDateToUse, threadId, content, wordCount]);
+            `, [userId, 'daily', reportDateToUse, threadId, content, wordCount]);
             this.save();
         } catch (e) {
             console.error('❌ recordDailyReport:', e.message);
@@ -666,7 +923,7 @@ class MuhawalatDatabase {
      * @param {string} date - YYYY-MM-DD
      */
     removeAllReportsForDate(date) {
-        this.db.run('DELETE FROM daily_reports WHERE report_date = ?', [date]);
+        this.db.run('DELETE FROM reports WHERE type=\'daily\' AND report_date = ?', [date]);
         this.save();
     }
 
@@ -880,10 +1137,10 @@ class MuhawalatDatabase {
     recordWeeklyReport(userId, channelId, content, wordCount, period) {
         try {
             this.db.run(`
-                INSERT INTO weekly_reports (user_id, report_date, channel_id, content, word_count)
-                VALUES (?,?,?,?,?)
-                ON CONFLICT(user_id, report_date) DO UPDATE SET channel_id=excluded.channel_id, content=excluded.content, word_count=excluded.word_count
-            `, [userId, period, channelId, content, wordCount]);
+                INSERT INTO reports (user_id, type, report_date, channel_id, content, word_count)
+                VALUES (?,?,?,?,?,?)
+                ON CONFLICT(user_id, type, report_date) DO UPDATE SET channel_id=excluded.channel_id, content=excluded.content, word_count=excluded.word_count
+            `, [userId, 'weekly', period, channelId, content, wordCount]);
             this.save();
         } catch (e) { console.error('❌ recordWeeklyReport:', e.message); }
     }
@@ -891,10 +1148,10 @@ class MuhawalatDatabase {
     recordMonthlyReport(userId, channelId, content, wordCount, period) {
         try {
             this.db.run(`
-                INSERT INTO monthly_reports (user_id, report_date, channel_id, content, word_count)
-                VALUES (?,?,?,?,?)
-                ON CONFLICT(user_id, report_date) DO UPDATE SET channel_id=excluded.channel_id, content=excluded.content, word_count=excluded.word_count
-            `, [userId, period, channelId, content, wordCount]);
+                INSERT INTO reports (user_id, type, report_date, channel_id, content, word_count)
+                VALUES (?,?,?,?,?,?)
+                ON CONFLICT(user_id, type, report_date) DO UPDATE SET channel_id=excluded.channel_id, content=excluded.content, word_count=excluded.word_count
+            `, [userId, 'monthly', period, channelId, content, wordCount]);
             this.save();
         } catch (e) { console.error('❌ recordMonthlyReport:', e.message); }
     }
@@ -902,10 +1159,10 @@ class MuhawalatDatabase {
     recordYearlyReport(userId, channelId, content, wordCount, period) {
         try {
             this.db.run(`
-                INSERT INTO yearly_reports (user_id, report_date, channel_id, content, word_count)
-                VALUES (?,?,?,?,?)
-                ON CONFLICT(user_id, report_date) DO UPDATE SET channel_id=excluded.channel_id, content=excluded.content, word_count=excluded.word_count
-            `, [userId, period, channelId, content, wordCount]);
+                INSERT INTO reports (user_id, type, report_date, channel_id, content, word_count)
+                VALUES (?,?,?,?,?,?)
+                ON CONFLICT(user_id, type, report_date) DO UPDATE SET channel_id=excluded.channel_id, content=excluded.content, word_count=excluded.word_count
+            `, [userId, 'yearly', period, channelId, content, wordCount]);
             this.save();
         } catch (e) { console.error('❌ recordYearlyReport:', e.message); }
     }
@@ -1013,25 +1270,22 @@ class MuhawalatDatabase {
     // ==========================================
     updateStats(userId, done, streak, achieved) {
         this.db.run(`
-            INSERT INTO stats (user_id, total_done, days_streak, achieved_today, last_active)
-            VALUES (?,?,?,?,CURRENT_TIMESTAMP)
-            ON CONFLICT(user_id) DO UPDATE SET
-                total_done=excluded.total_done, days_streak=excluded.days_streak,
-                achieved_today=excluded.achieved_today, last_active=CURRENT_TIMESTAMP
-        `, [userId, done, streak, achieved ? 1 : 0]);
+            UPDATE users SET total_done=?, days_streak=?, achieved_today=?, last_active=CURRENT_TIMESTAMP
+            WHERE user_id=?
+        `, [done, streak, achieved ? 1 : 0, userId]);
         this.save();
     }
 
     incrementUserTotal(userId) {
         try {
-            this.db.run(`UPDATE stats SET total_done=total_done+1, last_active=CURRENT_TIMESTAMP WHERE user_id=?`, [userId]);
+            this.db.run(`UPDATE users SET total_done=total_done+1, last_active=CURRENT_TIMESTAMP WHERE user_id=?`, [userId]);
             this.save();
         } catch (e) { console.error('❌ incrementUserTotal:', e.message); }
     }
 
     decrementUserTotal(userId) {
         try {
-            this.db.run(`UPDATE stats SET total_done=MAX(0,total_done-1), last_active=CURRENT_TIMESTAMP WHERE user_id=?`, [userId]);
+            this.db.run(`UPDATE users SET total_done=MAX(0,total_done-1), last_active=CURRENT_TIMESTAMP WHERE user_id=?`, [userId]);
             this.save();
         } catch (e) { console.error('❌ decrementUserTotal:', e.message); }
     }
@@ -1148,21 +1402,21 @@ class MuhawalatDatabase {
     }
 
     setWeeklyGoal(userId, goalText) {
-        this.db.run(`INSERT INTO weekly_goals (user_id, goal_text, week_start) VALUES (?,?,?)`,
-            [userId, goalText, this.getWeekStart()]);
+        this.db.run(`INSERT INTO goals (user_id, goal_text, goal_type, period) VALUES (?,?,?,?)`,
+            [userId, goalText, 'weekly', this.getWeekStart()]);
         this.save();
     }
 
     getWeeklyGoal(userId) {
-        const s = this.db.prepare(`SELECT * FROM weekly_goals WHERE user_id=? AND week_start=? ORDER BY id DESC LIMIT 1`);
-        s.bind([userId, this.getWeekStart()]);
+        const s = this.db.prepare(`SELECT * FROM goals WHERE user_id=? AND goal_type='weekly' ORDER BY created_at DESC LIMIT 1`);
+        s.bind([userId]);
         const r = s.step() ? s.getAsObject() : null;
         s.free(); return r;
     }
 
     updateWeeklyGoal(userId, goalText) {
-        this.db.run(`UPDATE weekly_goals SET goal_text=? WHERE user_id=? AND week_start=?`,
-            [goalText, userId, this.getWeekStart()]);
+        this.db.run(`UPDATE goals SET goal_text=? WHERE user_id=? AND goal_type='weekly'`,
+            [goalText, userId]);
         this.save();
     }
 
@@ -1534,14 +1788,14 @@ class MuhawalatDatabase {
 
     getLeaderboard(limit = 10) {
         const s = this.db.prepare(`
-            SELECT u.user_id, u.name, s.days_streak, s.total_done,
+            SELECT user_id, name, days_streak, total_done,
                    COALESCE(
                        (SELECT AVG(rate) FROM daily_history dh
-                        WHERE dh.user_id=u.user_id AND dh.date >= date('now','-7 days')),
+                        WHERE dh.user_id=users.user_id AND dh.date >= date('now','-7 days')),
                        0
                    ) as avg_rate
-            FROM users u LEFT JOIN stats s ON u.user_id=s.user_id
-            ORDER BY avg_rate DESC, s.days_streak DESC LIMIT ?
+            FROM users
+            ORDER BY avg_rate DESC, days_streak DESC LIMIT ?
         `);
         s.bind([limit]);
         const r = [];
@@ -1551,12 +1805,11 @@ class MuhawalatDatabase {
 
     getInactiveUsers() {
         const s = this.db.prepare(`
-            SELECT u.*, s.days_streak
-            FROM users u
-            LEFT JOIN stats s ON u.user_id = s.user_id
+            SELECT *
+            FROM users
             WHERE (
                 SELECT COUNT(*) FROM daily_reports dr
-                WHERE dr.user_id = u.user_id
+                WHERE dr.user_id = users.user_id
                 AND dr.report_date >= date('now', '-7 days')
             ) < 5
         `);
@@ -2026,7 +2279,7 @@ class MuhawalatDatabase {
             if (total > 0) {
                 if (rate >= 50) {
                     const newStreak = (u.days_streak || 0) + 1;
-                    this.db.run('UPDATE stats SET days_streak=? WHERE user_id=?', [newStreak, u.user_id]);
+                    this.db.run('UPDATE users SET days_streak=? WHERE user_id=?', [newStreak, u.user_id]);
 
                     if (newStreak >= 1 && !this.hasAchievement(u.user_id, 'first_day'))
                         this.addAchievement(u.user_id, 'first_day');
@@ -2076,7 +2329,7 @@ class MuhawalatDatabase {
                             );
                             frozenUsers.push(u);
                         } else {
-                            this.db.run('UPDATE stats SET days_streak=0 WHERE user_id=?', [u.user_id]);
+                            this.db.run('UPDATE users SET days_streak=0 WHERE user_id=?', [u.user_id]);
                         }
                     }
                 }
@@ -2093,7 +2346,7 @@ class MuhawalatDatabase {
         });
 
         this.db.run('UPDATE habits SET completed=0');
-        this.db.run('UPDATE stats SET achieved_today=0');
+        this.db.run('UPDATE users SET achieved_today=0');
         this.saveImmediate();
         console.log(`✅ Daily reset done — ${users.length} users processed`);
         return frozenUsers;

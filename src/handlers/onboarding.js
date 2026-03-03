@@ -113,6 +113,29 @@ async function processRegistration(interaction, db) {
         // ✅ ENHANCED: معالجة النوع بدقة أكبر
         const gender = detectGender(genderRaw);
 
+        // Check if user is archived — restore instead of creating new thread
+        const existingUser = db.getUser(interaction.user.id);
+        if (existingUser && existingUser.status === 'archived') {
+            // Restore the user
+            db.restoreUser(interaction.user.id);
+            
+            // Try to unarchive their existing thread
+            if (existingUser.thread_id) {
+                try {
+                    const oldThread = await interaction.guild.channels.fetch(existingUser.thread_id).catch(() => null);
+                    if (oldThread) {
+                        if (oldThread.archived) await oldThread.setArchived(false).catch(() => {});
+                        await updateDashboard(oldThread, interaction.user.id, db);
+                        return interaction.editReply(`✅ مرحباً بعودتك! مساحتك جاهزة: <#${existingUser.thread_id}>`);
+                    }
+                } catch (e) {
+                    console.error('❌ Restore thread error:', e.message);
+                }
+            }
+            // If thread not found, fall through to create a new one
+            db.updateUser(interaction.user.id, { status: 'active' });
+        }
+
         const existing = db.getUser(interaction.user.id);
         if (existing?.thread_id) {
             return interaction.editReply('✅ أنت مسجل بالفعل! مساحتك: <#' + existing.thread_id + '>');

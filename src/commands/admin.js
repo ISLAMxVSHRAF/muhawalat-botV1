@@ -424,6 +424,44 @@ const data = new SlashCommandBuilder()
                     .setName('clean_departed')
                     .setDescription('فحص وتنظيف الداتابيز من الأعضاء اللي خرجوا أو فقدوا الرول')
             )
+            .addSubcommand(sub =>
+                sub
+                    .setName('archive')
+                    .setDescription('تجميد عضو وأرشفة مساحته')
+                    .addUserOption(o =>
+                        o
+                            .setName('user')
+                            .setDescription('العضو المراد تجميده')
+                            .setRequired(true)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('restore')
+                    .setDescription('استعادة عضو مجمّد')
+                    .addUserOption(o =>
+                        o
+                            .setName('user')
+                            .setDescription('العضو المراد استعادته')
+                            .setRequired(true)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('delete')
+                    .setDescription('حذف عضو نهائياً')
+                    .addUserOption(o =>
+                        o
+                            .setName('user')
+                            .setDescription('العضو المراد حذفه')
+                            .setRequired(true)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
+                    .setName('archived')
+                    .setDescription('عرض قائمة الأعضاء المجمّدين')
+            )
     )
 
     // System group
