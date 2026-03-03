@@ -759,7 +759,7 @@ class MuhawalatDatabase {
     getDailyReports(date) {
         try {
             const s = this.db.prepare(
-                `SELECT * FROM daily_reports WHERE report_date = ? ORDER BY recorded_at DESC`
+                `SELECT * FROM reports WHERE type = 'daily' AND report_date = ? ORDER BY recorded_at DESC`
             );
             s.bind([date]);
             const r = [];
@@ -789,8 +789,8 @@ class MuhawalatDatabase {
         try {
             const s = this.db.prepare(`
                 SELECT report_date, COUNT(*) as count
-                FROM daily_reports
-                WHERE report_date >= date('now', '-7 days')
+                FROM reports
+                WHERE type = 'daily' AND report_date >= date('now', '-7 days')
                 GROUP BY report_date
                 ORDER BY report_date DESC
             `);
@@ -812,8 +812,8 @@ class MuhawalatDatabase {
         try {
             const s = this.db.prepare(`
                 SELECT COUNT(*) as count
-                FROM daily_reports
-                WHERE user_id = ?
+                FROM reports
+                WHERE type = 'daily' AND user_id = ?
                   AND report_date >= date('now', ?)
             `);
             s.bind([userId, `-${days} days`]);
@@ -979,8 +979,8 @@ class MuhawalatDatabase {
 
     getReportCountInRange(userId, startDate, endDate) {
         const s = this.db.prepare(
-            `SELECT COUNT(*) as cnt FROM daily_reports
-             WHERE user_id = ? AND report_date >= ? AND report_date <= ?`
+            `SELECT COUNT(*) as cnt FROM reports
+             WHERE user_id = ? AND type = 'daily' AND report_date >= ? AND report_date <= ?`
         );
         s.bind([userId, startDate, endDate]);
         const row = s.step() ? s.getAsObject() : { cnt: 0 };
