@@ -470,6 +470,196 @@ async function dbBackupExecute(interaction, { db } = {}) {
     }
 }
 
+async function showDashboardPage(interaction, db, client, page) {
+    const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+    const CONFIG = require('../config');
+
+    const guild = interaction.guild;
+    const allUsers    = db.getAllUsers();
+    const archived    = db.getArchivedUsers();
+    const season      = db.getActiveMonth ? db.getActiveMonth() : null;
+    const todayStr    = new Date().toLocaleDateString('ar-EG', { timeZone: 'Africa/Cairo', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+    // ── Nav buttons (always shown) ──────────────────────────────
+    const nav = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('dash_overview').setLabel('🏠 عام').setStyle(page === 'overview' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('dash_reports').setLabel('📝 التقارير').setStyle(page === 'reports' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('dash_tasks').setLabel('🎯 المهام').setStyle(page === 'tasks' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('dash_warnings').setLabel('⚠️ الإنذارات').setStyle(page === 'warnings' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('dash_members').setLabel('👥 الأعضاء').setStyle(page === 'members' ? ButtonStyle.Primary : ButtonStyle.Secondary)
+    );
+
+    let embed, actionRow;
+
+    // ════════════════════════════════════════
+    // 🏠 PAGE 1 — OVERVIEW
+    // ════════════════════════════════════════
+    if (page === 'overview') {
+        const leaderboard = db.getLeaderboard(1);
+        const topUser = leaderboard[0];
+        const weekStats = db.getWeeklyReportStats();
+        const todayReports = weekStats[0]?.count || 0;
+        
+        const nowCairo = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Cairo' }));
+        let seasonInfo = '❌ لا يوجد Season نشط';
+        let weekNumber = '-';
+        if (season) {
+            const diff = Math.floor((nowCairo - new Date(season.start_date)) / 86400000);
+            weekNumber = Math.min(4, Math.floor(diff / 7) + 1);
+            const remaining = (season.duration_days || 28) - diff;
+            seasonInfo = `الأسبوع ${weekNumber} | باقي ${remaining} يوم`;
+        }
+
+        embed = new EmbedBuilder()
+            .setColor(CONFIG.COLORS.primary)
+            .setTitle('📊 لوحة التحكم — نظرة عامة')
+            .setDescription(`> 📅 ${todayStr}`)
+            .addFields(
+                { name: '👥 الأعضاء النشطين', value: `**${allUsers.length}**`, inline: true },
+                { name: '📦 مؤرشفين', value: `**${archived.length}**`, inline: true },
+                { name: '📝 تقارير امبارح', value: `**${todayReports}**`, inline: true },
+                { name: '🗓️ السيزون', value: seasonInfo, inline: true },
+                { name: '🔥 أعلى ستريك', value: topUser ? `**${topUser.name}** (${topUser.days_streak} يوم)` : 'لا يوجد', inline: true },
+                { name: '📈 إجمالي الأعضاء', value: `**${allUsers.length + archived.length}**`, inline: true }
+            )
+            .setFooter({ text: 'Muhawalat Dashboard • يتحدث عند كل ضغطة' });
+
+        actionRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('dash_refresh').setLabel('🔄 تحديث').setStyle(ButtonStyle.Success)
+        );
+    }
+
+    // ════════════════════════════════════════
+    // 📝 PAGE 2 — REPORTS
+    // ════════════════════════════════════════
+    else if (page === 'reports') {
+        const cairoDate = db.getCairoLogicalDate ? db.getCairoLogicalDate() : new Date().toISOString().split('T')[0];
+        const todayReports = db.getDailyReports(cairoDate);
+        const reportedIds = new Set(todayReports.map(r => r.user_id));
+        const missing = allUsers.filter(u => !reportedIds.has(u.user_id));
+        const weekStats = db.getWeeklyReportStats();
+
+        let weekSummary = weekStats.slice(0, 7).map(s => `${s.report_date}: **${s.count}** تقرير`).join('\n') || 'لا توجد بيانات';
+
+        embed = new EmbedBuilder()
+            .setColor(CONFIG.COLORS.info)
+            .setTitle('📝 لوحة التحكم — التقارير')
+            .addFields(
+                { name: `✅ عملوا تقرير امبارح (${reportedIds.size})`, value: reportedIds.size > 0 ? [...reportedIds].slice(0, 10).map(id => `<@${id}>`).join(' ') || '-' : '—', inline: false },
+                { name: `❌ لم يعملوا تقرير (${missing.length})`, value: missing.length > 0 ? missing.slice(0, 15).map(u => `**${u.name}**`).join('، ') : '✅ الكل عمل تقرير!', inline: false },
+                { name: '📅 إحصائيات آخر 7 أيام', value: weekSummary, inline: false }
+            )
+            .setFooter({ text: `نسبة اليوم: ${allUsers.length > 0 ? Math.round((reportedIds.size / allUsers.length) * 100) : 0}%` });
+
+        actionRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('dash_refresh').setLabel('🔄 تحديث').setStyle(ButtonStyle.Success)
+        );
+    }
+
+    // ════════════════════════════════════════
+    // 🎯 PAGE 3 — TASKS
+    // ════════════════════════════════════════
+    else if (page === 'tasks') {
+        const guildId = guild.id;
+        const weeklyTasks = db.getActiveTasks(guildId, 'weekly');
+        const monthlyTasks = db.getActiveTasks(guildId, 'monthly');
+        const challenges = db.getActiveChallenges ? db.getActiveChallenges() : [];
+
+        const formatTask = (t) => {
+            const lockTs = Math.floor(new Date(t.lock_at).getTime() / 1000);
+            const participants = db.getUserTaskCompletions ? db.getUserTaskCompletions(t.id, null) : [];
+            return `**#${t.id}** ${t.title} — ينتهي <t:${lockTs}:R> (${Array.isArray(participants) ? participants.length : 0} مشارك)`;
+        };
+
+        embed = new EmbedBuilder()
+            .setColor(CONFIG.COLORS.success)
+            .setTitle('🎯 لوحة التحكم — المهام والتحديات')
+            .addFields(
+                { name: `📅 مهام أسبوعية (${weeklyTasks.length})`, value: weeklyTasks.length > 0 ? weeklyTasks.map(formatTask).join('\n') : 'لا توجد مهام أسبوعية نشطة', inline: false },
+                { name: `🗓️ مهام شهرية (${monthlyTasks.length})`, value: monthlyTasks.length > 0 ? monthlyTasks.map(formatTask).join('\n') : 'لا توجد مهام شهرية نشطة', inline: false },
+                { name: `🏆 تحديات نشطة (${challenges.length})`, value: challenges.length > 0 ? challenges.map(c => `**${c.title}** — ${c.duration_days} يوم`).join('\n') : 'لا توجد تحديات نشطة', inline: false }
+            );
+
+        actionRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('dash_refresh').setLabel('🔄 تحديث').setStyle(ButtonStyle.Success)
+        );
+    }
+
+    // ════════════════════════════════════════
+    // ⚠️ PAGE 4 — WARNINGS
+    // ════════════════════════════════════════
+    else if (page === 'warnings') {
+        const warned = allUsers.filter(u => (u.warning_count || 0) > 0).sort((a, b) => b.warning_count - a.warning_count);
+        const pendingTimeouts = db.getPendingTimeouts ? db.getPendingTimeouts() : [];
+
+        embed = new EmbedBuilder()
+            .setColor(CONFIG.COLORS.danger)
+            .setTitle('⚠️ لوحة التحكم — الإنذارات')
+            .addFields(
+                {
+                    name: `🔴 أعضاء عندهم إنذارات (${warned.length})`,
+                    value: warned.length > 0
+                        ? warned.slice(0, 15).map(u => `**${u.name}** — ${'⚠️'.repeat(u.warning_count)} (${u.warning_count}/3)`).join('\n')
+                        : '✅ لا يوجد إنذارات حالياً',
+                    inline: false
+                },
+                {
+                    name: `⏱️ في انتظار Timeout (${pendingTimeouts.length})`,
+                    value: pendingTimeouts.length > 0
+                        ? pendingTimeouts.slice(0, 10).map(t => `<@${t.user_id}>`).join(' ')
+                        : '✅ لا يوجد',
+                    inline: false
+                }
+            )
+            .setFooter({ text: `إجمالي الإنذارات: ${warned.reduce((sum, u) => sum + (u.warning_count || 0), 0)}` });
+
+        actionRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('dash_refresh').setLabel('🔄 تحديث').setStyle(ButtonStyle.Success)
+        );
+    }
+
+    // ════════════════════════════════════════
+    // 👥 PAGE 5 — MEMBERS
+    // ════════════════════════════════════════
+    else if (page === 'members') {
+        const inactive = db.getInactiveUsers ? db.getInactiveUsers() : [];
+        const activeInactive = inactive.filter(u => u.status === 'active' || !u.status);
+        const leaderboard = db.getLeaderboard(5);
+
+        embed = new EmbedBuilder()
+            .setColor(CONFIG.COLORS.warning)
+            .setTitle('👥 لوحة التحكم — الأعضاء')
+            .addFields(
+                {
+                    name: `📦 مؤرشفين (${archived.length})`,
+                    value: archived.length > 0 ? archived.slice(0, 10).map(u => `**${u.name}**`).join('، ') : '✅ لا يوجد',
+                    inline: false
+                },
+                {
+                    name: `😴 غير نشطين هذا الأسبوع (${activeInactive.length})`,
+                    value: activeInactive.length > 0 ? activeInactive.slice(0, 15).map(u => `**${u.name}**`).join('، ') : '✅ الكل نشط!',
+                    inline: false
+                },
+                {
+                    name: '🏆 أفضل 5 هذا الأسبوع',
+                    value: leaderboard.length > 0 ? leaderboard.map((u, i) => `${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} **${u.name}** — ${Math.round(u.avg_rate || 0)}%`).join('\n') : 'لا توجد بيانات',
+                    inline: false
+                }
+            );
+
+        actionRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('dash_refresh').setLabel('🔄 تحديث').setStyle(ButtonStyle.Success)
+        );
+    }
+
+    await interaction.editReply({ embeds: [embed], components: [nav, actionRow] });
+}
+
+async function dashboardExecute(interaction, { db, client }) {
+    await interaction.deferReply({ ephemeral: true });
+    await showDashboardPage(interaction, db, client, 'overview');
+}
+
 // ==========================================
 // Central handler for /admin system group
 // ==========================================
@@ -487,6 +677,8 @@ async function handleSystem(interaction, deps) {
             return recreateDashboardExecute(interaction, deps);
         case 'db_backup':
             return dbBackupExecute(interaction, deps);
+        case 'dashboard':
+            return dashboardExecute(interaction, deps);
         case 'debug_status':
             return debugStatusExecute(interaction, deps);
         default:
@@ -500,6 +692,8 @@ module.exports = {
     showCustomSetupModal,
     handleCustomSetup,
     showManualSetupModal,
-    handleManualSetup
+    handleManualSetup,
+    dashboardExecute,
+    showDashboardPage
 };
 
