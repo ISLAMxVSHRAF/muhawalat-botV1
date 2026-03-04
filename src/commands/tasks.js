@@ -386,12 +386,11 @@ async function syncTasksExecute(interaction, { db, client }) {
                 skipped++;
                 continue;
             }
-            let content = (msg.content || '').trim();
-            if (msg.attachments && msg.attachments.size > 0) {
-                const url = msg.attachments.first().url;
-                content = content ? `${content}\n${url}` : url;
-            }
-            db.completeTask(task.id, userId, msg.id, content);
+            const content = (msg.content || '').trim();
+            const attachmentUrl = msg.attachments && msg.attachments.size > 0
+                ? msg.attachments.first().url
+                : null;
+            db.completeTask(task.id, userId, msg.id, content, attachmentUrl);
             registered++;
             const user = db.getUser(userId);
             if (user?.thread_id) {

@@ -333,12 +333,13 @@ class MuhawalatDatabase {
 
         // ─── جدول إتمام المهام ────────────────────────────────────
         this.db.run(`CREATE TABLE IF NOT EXISTS task_completions (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            task_id      INTEGER NOT NULL,
-            user_id      TEXT NOT NULL,
-            message_id   TEXT,
-            content      TEXT,
-            completed_at TEXT DEFAULT (datetime('now')),
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id        INTEGER NOT NULL,
+            user_id        TEXT NOT NULL,
+            message_id     TEXT,
+            content        TEXT,
+            attachment_url TEXT,
+            completed_at   TEXT DEFAULT (datetime('now')),
             UNIQUE(task_id, user_id)
         )`);
 
@@ -401,6 +402,7 @@ class MuhawalatDatabase {
             `ALTER TABLE config ADD COLUMN general_channel_id TEXT`,
             `ALTER TABLE config ADD COLUMN member_role_id TEXT`,
             `ALTER TABLE config ADD COLUMN admin_role_id TEXT`,
+            `ALTER TABLE task_completions ADD COLUMN attachment_url TEXT`,
         ];
         for (const sql of cols) {
             try { this.db.run(sql); } catch (e) {
@@ -1420,12 +1422,16 @@ class MuhawalatDatabase {
         return r;
     }
 
-    completeTask(taskId, userId, messageId, content) {
+    completeTask(taskId, userId, messageId, content, attachmentUrl = null) {
         try {
             this.db.run(
-                `INSERT INTO task_completions (task_id, user_id, message_id, content)
-                 VALUES (?, ?, ?, ?)`,
-                [taskId, userId, messageId, content || null]
+                `INSERT INTO task_completions (task_id, user_id, message_id, content, attachment_url)
+                 VALUES (?, ?, ?, ?, ?)
+                 ON CONFLICT(task_id, user_id) DO UPDATE SET
+                    message_id = excluded.message_id,
+                    content = excluded.content,
+                    attachment_url = excluded.attachment_url`,
+                [taskId, userId, messageId, content || null, attachmentUrl || null]
             );
             this.save();
             return true;

@@ -227,7 +227,11 @@ client.on('messageCreate', async message => {
                         if (existing.name !== newName) db.updateUser(message.author.id, { name: newName });
                     }
 
-                    db.completeTask(task.id, message.author.id, message.id, message.content);
+                    const content = message.content || '';
+                    const attachmentUrl = message.attachments && message.attachments.size > 0
+                        ? message.attachments.first().url
+                        : null;
+                    db.completeTask(task.id, message.author.id, message.id, content, attachmentUrl);
                     await message.react('👏').catch(() => {});
 
                     // رد ephemeral للعضو
