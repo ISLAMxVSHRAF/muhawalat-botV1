@@ -473,7 +473,20 @@ async function dbBackupExecute(interaction, { db } = {}) {
 async function showDashboardPage(interaction, db, client, page) {
     try {
     const guild = interaction.guild;
-    const allUsers    = db.getAllUsers();
+    const allUsers = db.getAllUsers();
+    // Filter by MEMBER_ROLE_ID if set
+    let activeMembers = allUsers;
+    if (process.env.MEMBER_ROLE_ID) {
+        try {
+            const guildMembers = await guild.members.fetch();
+            activeMembers = allUsers.filter(u => {
+                const m = guildMembers.get(u.user_id);
+                return m && m.roles.cache.has(process.env.MEMBER_ROLE_ID);
+            });
+        } catch (e) {
+            activeMembers = allUsers;
+        }
+    }
     const archived    = db.getArchivedUsers();
     const season      = db.getActiveMonth ? db.getActiveMonth() : null;
     const todayStr    = new Date().toLocaleDateString('ar-EG', { timeZone: 'Africa/Cairo', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -513,12 +526,12 @@ async function showDashboardPage(interaction, db, client, page) {
             .setTitle('📊 لوحة التحكم — نظرة عامة')
             .setDescription(`> 📅 ${todayStr}`)
             .addFields(
-                { name: '👥 الأعضاء النشطين', value: `**${allUsers.length}**`, inline: true },
+                { name: '👥 الأعضاء النشطين', value: `**${activeMembers.length}**`, inline: true },
                 { name: '📦 مؤرشفين', value: `**${archived.length}**`, inline: true },
                 { name: '📝 تقارير امبارح', value: `**${todayReports}**`, inline: false },
                 { name: '🗓️ السيزون', value: seasonInfo, inline: false },
                 { name: '🔥 أعلى ستريك', value: topUser ? `**${topUser.name}** (${topUser.days_streak} يوم)` : 'لا يوجد', inline: false },
-                { name: '📈 إجمالي الأعضاء', value: `**${allUsers.length + archived.length}**`, inline: true }
+                { name: '📈 إجمالي الأعضاء', value: `**${activeMembers.length + archived.length}**`, inline: true }
             )
             .setFooter({ text: 'Muhawalat Dashboard • يتحدث عند كل ضغطة' });
 
@@ -534,7 +547,7 @@ async function showDashboardPage(interaction, db, client, page) {
         const cairoDate = db.getCairoLogicalDate ? db.getCairoLogicalDate() : new Date().toISOString().split('T')[0];
         const todayReports = db.getDailyReports(cairoDate);
         const reportedIds = new Set(todayReports.map(r => r.user_id));
-        const missing = allUsers.filter(u => !reportedIds.has(u.user_id));
+        const missing = activeMembers.filter(u => !reportedIds.has(u.user_id));
         const weekStats = db.getWeeklyReportStats();
 
         let weekSummary = weekStats.slice(0, 7).map(s => `${s.report_date}: **${s.count}** تقرير`).join('\n') || 'لا توجد بيانات';
@@ -544,10 +557,10 @@ async function showDashboardPage(interaction, db, client, page) {
             .setTitle('📝 لوحة التحكم — التقارير')
             .addFields(
                 { name: `✅ عملوا تقرير امبارح (${reportedIds.size})`, value: reportedIds.size > 0 ? [...reportedIds].slice(0, 10).map(id => `<@${id}>`).join(' ') || '-' : '—', inline: false },
-                { name: `❌ لم يعملوا تقرير (${missing.length})`, value: missing.length > 0 ? missing.slice(0, 15).map(u => `**${u.name}**`).join('، ') : '✅ الكل عمل تقرير!', inline: false },
+                { name: `❌ لم يعملوا تقرير (${missing.length})`, value: missing.length > 0 ? missing.slice(0, 20).map(u => `<@${u.user_id}>`).join(' ') : '✅ الكل عمل تقرير!', inline: false },
                 { name: '📅 إحصائيات آخر 7 أيام', value: weekSummary, inline: false }
             )
-            .setFooter({ text: `نسبة اليوم: ${allUsers.length > 0 ? Math.round((reportedIds.size / allUsers.length) * 100) : 0}%` });
+            .setFooter({ text: `نسبة اليوم: ${activeMembers.length > 0 ? Math.round((reportedIds.size / activeMembers.length) * 100) : 0}%` });
 
         actionRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('dash_refresh').setLabel('🔄 تحديث').setStyle(ButtonStyle.Success)
@@ -565,8 +578,8 @@ async function showDashboardPage(interaction, db, client, page) {
 
         const formatTask = (t) => {
             const lockTs = Math.floor(new Date(t.lock_at).getTime() / 1000);
-            const participants = db.getUserTaskCompletions ? db.getUserTaskCompletions(t.id, null) : [];
-            return `**#${t.id}** ${t.title} — ينتهي <t:${lockTs}:R> (${Array.isArray(participants) ? participants.length : 0} مشارك)`;
+            const count = db.getTaskCompletionCount ? db.getTaskCompletionCount(t.id) : 0;
+            return `**#${t.id}** ${t.title} — ينتهي <t:${lockTs}:R> (${count} مشارك)`;
         };
 
         embed = new EmbedBuilder()
@@ -621,7 +634,8 @@ async function showDashboardPage(interaction, db, client, page) {
     // ════════════════════════════════════════
     else if (page === 'members') {
         const inactive = db.getInactiveUsers ? db.getInactiveUsers() : [];
-        const activeInactive = inactive.filter(u => u.status === 'active' || !u.status);
+        const activeMemberIds = new Set(activeMembers.map(u => u.user_id));
+        const activeInactive = inactive.filter(u => activeMemberIds.has(u.user_id));
         const leaderboard = db.getLeaderboard(5);
 
         embed = new EmbedBuilder()

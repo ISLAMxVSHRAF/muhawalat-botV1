@@ -1450,6 +1450,18 @@ class MuhawalatDatabase {
         } catch (e) { return 0; }
     }
 
+    getTaskCompletionCount(taskId) {
+        try {
+            const s = this.db.prepare(
+                `SELECT COUNT(*) as cnt FROM task_completions WHERE task_id = ?` 
+            );
+            s.bind([taskId]);
+            const r = s.step() ? s.getAsObject() : { cnt: 0 };
+            s.free();
+            return r.cnt || 0;
+        } catch (e) { return 0; }
+    }
+
     hasCompletedTask(taskId, userId) {
         const s = this.db.prepare(
             `SELECT id FROM task_completions WHERE task_id = ? AND user_id = ?`
@@ -1668,9 +1680,10 @@ class MuhawalatDatabase {
             SELECT *
             FROM users
             WHERE (
-                SELECT COUNT(*) FROM daily_reports dr
-                WHERE dr.user_id = users.user_id
-                AND dr.report_date >= date('now', '-7 days')
+                SELECT COUNT(*) FROM reports r
+                WHERE r.user_id = users.user_id
+                AND r.type = 'daily'
+                AND r.report_date >= date('now', '-7 days')
             ) < 5
         `);
         const r = [];
