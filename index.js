@@ -615,10 +615,8 @@ client.on('interactionCreate', async interaction => {
             if (id.startsWith('dash_')) {
                 const page = id.replace('dash_', '');
                 const validPages = ['overview', 'reports', 'tasks', 'warnings', 'members'];
-                // For refresh button, get current page from the active embed title
                 let targetPage = validPages.includes(page) ? page : null;
                 if (!targetPage) {
-                    // fallback: try to detect current page from embed
                     const currentEmbed = interaction.message?.embeds?.[0];
                     const title = currentEmbed?.title || '';
                     if (title.includes('التقارير')) targetPage = 'reports';
