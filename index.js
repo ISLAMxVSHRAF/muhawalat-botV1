@@ -578,6 +578,23 @@ client.on('interactionCreate', async interaction => {
             if (id === 'btn_goal_monthly') return showMonthlyGoalModal(interaction, db);
             if (id === 'btn_goal_weekly')  return showWeeklyGoalModal(interaction, db);
 
+            if (id.startsWith('dash_')) {
+                const page = id.replace('dash_', '');
+                const validPages = ['overview', 'reports', 'tasks', 'warnings', 'members'];
+                let targetPage = validPages.includes(page) ? page : null;
+                if (!targetPage) {
+                    const currentEmbed = interaction.message?.embeds?.[0];
+                    const title = currentEmbed?.title || '';
+                    if (title.includes('التقارير')) targetPage = 'reports';
+                    else if (title.includes('المهام')) targetPage = 'tasks';
+                    else if (title.includes('الإنذارات')) targetPage = 'warnings';
+                    else if (title.includes('الأعضاء')) targetPage = 'members';
+                    else targetPage = 'overview';
+                }
+                await interaction.deferUpdate();
+                return showDashboardPage(interaction, db, client, targetPage);
+            }
+
             if (id === 'btn_refresh') {
                 await interaction.deferUpdate();
                 // ✅ BUG FIX: استخدم صاحب المساحة مش اللي ضغط الزرار
@@ -612,22 +629,6 @@ client.on('interactionCreate', async interaction => {
             }
             if (interaction.customId === 'select_manage_task') return handleTaskSelectMenu(interaction, { db, client: interaction.client });
             if (interaction.customId.startsWith('btn_task_')) return handleTaskButtons(interaction, { db, client: interaction.client });
-            if (id.startsWith('dash_')) {
-                const page = id.replace('dash_', '');
-                const validPages = ['overview', 'reports', 'tasks', 'warnings', 'members'];
-                let targetPage = validPages.includes(page) ? page : null;
-                if (!targetPage) {
-                    const currentEmbed = interaction.message?.embeds?.[0];
-                    const title = currentEmbed?.title || '';
-                    if (title.includes('التقارير')) targetPage = 'reports';
-                    else if (title.includes('المهام')) targetPage = 'tasks';
-                    else if (title.includes('الإنذارات')) targetPage = 'warnings';
-                    else if (title.includes('الأعضاء')) targetPage = 'members';
-                    else targetPage = 'overview';
-                }
-                await interaction.deferUpdate();
-                return showDashboardPage(interaction, db, client, targetPage);
-            }
             if (id.startsWith('btn_dm_reply_')) {
                 const targetUserId = id.replace('btn_dm_reply_', '');
                 const user = db.getUser(targetUserId);
