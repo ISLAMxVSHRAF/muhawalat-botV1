@@ -708,7 +708,7 @@ class MuhawalatDatabase {
             const cairoTime = new Date(cairoTimeStr);
             
             // If before 12:00 PM Cairo time, use yesterday's date
-            if (cairoTime.getHours() < 12) {
+            if (cairoTime.getHours() <= 12) {
                 cairoTime.setDate(cairoTime.getDate() - 1);
             }
             

@@ -366,11 +366,12 @@ async function timeoutListExecute(interaction, { db }) {
 // ==========================================
 
 function buildDateRange(days) {
-    const today = new Date();
+    const TZ = process.env.TIMEZONE || 'Africa/Cairo';
+    const cairoNow = new Date(new Date().toLocaleString('en-US', { timeZone: TZ }));
     const end = new Date(
-        today.getFullYear(),
-        today.getMonth(),
-        today.getDate()
+        cairoNow.getFullYear(),
+        cairoNow.getMonth(),
+        cairoNow.getDate()
     );
     const start = new Date(end);
     start.setDate(start.getDate() - (days - 1));
@@ -388,24 +389,26 @@ function buildDateRange(days) {
 async function segmentUsersByReports(db, days, guild) {
     const { startStr, endStr } = buildDateRange(days);
     const allUsers = db.getAllUsers();
-    
+
+    // Fetch all members once using cache
+    let guildMembers = guild.members.cache;
+    if (guildMembers.size < 2) {
+        guildMembers = await guild.members.fetch({ time: 15000 }).catch(() => guild.members.cache);
+    }
+
     const complete = [];
     const good = [];
     const danger = [];
     const zero = [];
 
-    // هنلف على الأعضاء من الداتابيز مباشرة عشان نضمن السرعة
     for (const u of allUsers) {
-        // فحص العضو بشكل فردي عشان نتجنب الـ Timeout
-        const member = await guild.members.fetch(u.user_id).catch(() => null);
-        
-        // لو العضو خرج من السيرفر، أو معندوش رول الأعضاء -> تجاهل
+        const member = guildMembers.get(u.user_id);
         if (!member) continue;
         if (process.env.MEMBER_ROLE_ID && !member.roles.cache.has(process.env.MEMBER_ROLE_ID)) continue;
 
         const count = db.getReportCountInRange(u.user_id, startStr, endStr);
         const entry = { ...u, reportCount: count };
-        
+
         if (count === days) complete.push(entry);
         else if (count > Math.floor(days / 2) && count < days) good.push(entry);
         else if (count > 0 && count <= Math.floor(days / 2)) danger.push(entry);
@@ -420,10 +423,10 @@ async function showRadarCategoryPage(interaction, adminId, pageIndex, days, data
     const members = data[cat.key] || [];
 
     const formatList = arr =>
-        arr.length ? arr.slice(0, 40).map(u => `<@${u.user_id}>`).join(' · ') : '—';
+        arr.length ? arr.slice(0, 25).map(u => `<@${u.user_id}>`).join('\n') : '—';
 
     const formatWithCounts = arr =>
-        arr.length ? arr.slice(0, 40).map(u => `<@${u.user_id}> (${u.reportCount ?? 0})`).join(' · ') : '—';
+        arr.length ? arr.slice(0, 25).map(u => `<@${u.user_id}> — ${u.reportCount ?? 0} تقارير`).join('\n') : '—';
 
     const value = (cat.key === 'complete' || cat.key === 'zero')
         ? formatList(members)
