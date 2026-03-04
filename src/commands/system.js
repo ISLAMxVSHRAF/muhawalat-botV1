@@ -474,11 +474,16 @@ async function showDashboardPage(interaction, db, client, page) {
     try {
     const guild = interaction.guild;
     const allUsers = db.getAllUsers();
-    // Filter by MEMBER_ROLE_ID if set
+    const archived = db.getArchivedUsers();
+    // Use cached guild members — only fetch if cache is empty
     let activeMembers = allUsers;
     if (process.env.MEMBER_ROLE_ID) {
         try {
-            const guildMembers = await guild.members.fetch();
+            // Use already-cached members instead of fetching every time
+            let guildMembers = guild.members.cache;
+            if (guildMembers.size < 2) {
+                guildMembers = await guild.members.fetch({ time: 10000 }).catch(() => guild.members.cache);
+            }
             activeMembers = allUsers.filter(u => {
                 const m = guildMembers.get(u.user_id);
                 return m && m.roles.cache.has(process.env.MEMBER_ROLE_ID);
@@ -487,7 +492,6 @@ async function showDashboardPage(interaction, db, client, page) {
             activeMembers = allUsers;
         }
     }
-    const archived    = db.getArchivedUsers();
     const season      = db.getActiveMonth ? db.getActiveMonth() : null;
     const todayStr    = new Date().toLocaleDateString('ar-EG', { timeZone: 'Africa/Cairo', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
