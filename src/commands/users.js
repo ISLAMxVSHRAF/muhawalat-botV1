@@ -710,7 +710,7 @@ async function handleRadarConfirm(interaction) {
 
         const modal = new ModalBuilder()
             .setCustomId(`modal_radar_${type}_${days}`)
-            .setTitle('رسالة التنبيه - رادار النشاط');
+            .setTitle(`رسالة التنبيه — ${type === 'zero' ? '🔴 المختفي' : type === 'danger' ? '🟠 في خطر' : '🌟 أداء جيد'}`);
 
         modal.addComponents(
             new ActionRowBuilder().addComponents(
