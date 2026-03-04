@@ -202,6 +202,16 @@ const data = new SlashCommandBuilder()
                     )
             )
             .addSubcommand(sub =>
+                sub
+                    .setName('task_edit')
+                    .setDescription('تعديل معلومات مهمة (العنوان، النوع، الترتيب، الديدلاين)')
+                    .addIntegerOption(o =>
+                        o.setName('task_id')
+                         .setDescription('رقم المهمة')
+                         .setRequired(true)
+                    )
+            )
+            .addSubcommand(sub =>
                 sub.setName('task_delete')
                    .setDescription('حذف مهمة نهائياً')
                    .addIntegerOption(opt =>

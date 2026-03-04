@@ -33,7 +33,7 @@ const {
 } = require('./src/commands/system');
 const { handleAutoResponse, processScheduleAddModal, processAutorespondAddModal } = require('./src/commands/automation_cmds');
 const { handleDailyReportButton } = require('./src/commands/reports');
-const { processTaskCreateModal, handleTaskSelectMenu, handleTaskButtons, processTaskEditDeadlineModal } = require('./src/commands/tasks');
+const { processTaskCreateModal, handleTaskSelectMenu, handleTaskButtons, processTaskEditDeadlineModal, taskEditExecute, processTaskEditModals } = require('./src/commands/tasks');
 const {
     handleRadarNudgeButton,
     processRadarNudgeModal,
@@ -723,6 +723,9 @@ client.on('interactionCreate', async interaction => {
             if (id.startsWith('modal_schedule_add_')) return processScheduleAddModal(interaction, { automation });
             if (id.startsWith('modal_autorespond_add_')) return processAutorespondAddModal(interaction, { db });
             if (id.startsWith('modal_task_edit_')) return processTaskEditDeadlineModal(interaction, { db, client: interaction.client });
+            if (id.startsWith('modal_task_edit_info_') || id.startsWith('modal_task_edit_dl_')) {
+                return processTaskEditModals(interaction, { db });
+            }
             if (id.startsWith('modal_dm_reply_')) {
                 const targetUserId = id.replace('modal_dm_reply_', '');
                 await interaction.deferReply({ flags: 64 });

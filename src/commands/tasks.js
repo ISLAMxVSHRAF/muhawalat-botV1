@@ -548,6 +548,71 @@ async function handleTaskSelectMenu(interaction, deps) {
 async function handleTaskButtons(interaction, deps) {
     const db = deps.db;
     try {
+        // ── task_edit buttons ──
+        if (interaction.customId.startsWith('btn_task_edit_info_')) {
+            const taskId = parseInt(interaction.customId.replace('btn_task_edit_info_', ''));
+            const task = db.getTask ? db.getTask(taskId) : null;
+            if (!task) return interaction.reply({ content: '❌ المهمة غير موجودة.', ephemeral: true });
+
+            const modal = new ModalBuilder()
+                .setCustomId(`modal_task_edit_info_${taskId}`)
+                .setTitle(`✏️ تعديل معلومات المهمة #${taskId}`)
+                .addComponents(
+                    new ActionRowBuilder().addComponents(
+                        new TextInputBuilder()
+                            .setCustomId('title')
+                            .setLabel('العنوان')
+                            .setStyle(TextInputStyle.Short)
+                            .setValue(task.title || '')
+                            .setRequired(true)
+                    ),
+                    new ActionRowBuilder().addComponents(
+                        new TextInputBuilder()
+                            .setCustomId('task_order')
+                            .setLabel('الترتيب (رقم)')
+                            .setStyle(TextInputStyle.Short)
+                            .setValue(String(task.task_order || ''))
+                            .setRequired(false)
+                    )
+                );
+            return interaction.showModal(modal);
+        }
+
+        if (interaction.customId.startsWith('btn_task_edit_dl_')) {
+            const taskId = parseInt(interaction.customId.replace('btn_task_edit_dl_', ''));
+            const modal = new ModalBuilder()
+                .setCustomId(`modal_task_edit_dl_${taskId}`)
+                .setTitle(`📅 تعديل الديدلاين #${taskId}`)
+                .addComponents(
+                    new ActionRowBuilder().addComponents(
+                        new TextInputBuilder()
+                            .setCustomId('end_date')
+                            .setLabel('تاريخ الانتهاء (DD-MM-YYYY)')
+                            .setStyle(TextInputStyle.Short)
+                            .setPlaceholder('DD-MM-YYYY')
+                            .setRequired(true)
+                    ),
+                    new ActionRowBuilder().addComponents(
+                        new TextInputBuilder()
+                            .setCustomId('end_time')
+                            .setLabel('ساعة الانتهاء (HH:mm)')
+                            .setStyle(TextInputStyle.Short)
+                            .setPlaceholder('22:00')
+                            .setRequired(true)
+                    )
+                );
+            return interaction.showModal(modal);
+        }
+
+        if (interaction.customId.startsWith('btn_task_delete_')) {
+            const taskId = parseInt(interaction.customId.replace('btn_task_delete_', ''));
+            const task = db.getTask ? db.getTask(taskId) : null;
+            if (!task) return interaction.update({ content: '❌ المهمة غير موجودة.', embeds: [], components: [] });
+            db.safeBackup('before-delete-task');
+            db.deleteTask(taskId);
+            return interaction.update({ content: `✅ تم حذف المهمة **${task.title}** بنجاح.`, embeds: [], components: [] });
+        }
+
         // استرجاع رقم المهمة من الذاكرة
         const taskId = _activeTaskManagement.get(interaction.user.id);
         
@@ -628,6 +693,36 @@ async function processTaskEditDeadlineModal(interaction, deps) {
     }
 }
 
+async function processTaskEditModals(interaction, { db }) {
+    try {
+        const id = interaction.customId;
+
+        if (id.startsWith('modal_task_edit_info_')) {
+            const taskId = parseInt(id.replace('modal_task_edit_info_', ''));
+            const title = interaction.fields.getTextInputValue('title').trim();
+            const orderRaw = interaction.fields.getTextInputValue('task_order').trim();
+            const updates = { title };
+            if (orderRaw && !isNaN(parseInt(orderRaw))) updates.task_order = parseInt(orderRaw);
+            db.updateTask(taskId, updates);
+            return interaction.reply({ content: `✅ تم تعديل معلومات المهمة #${taskId} بنجاح.`, ephemeral: true });
+        }
+
+        if (id.startsWith('modal_task_edit_dl_')) {
+            const taskId = parseInt(id.replace('modal_task_edit_dl_', ''));
+            const endDate = interaction.fields.getTextInputValue('end_date').trim();
+            const endTime = interaction.fields.getTextInputValue('end_time').trim();
+            const lockAt = parseDateTime(endDate, endTime);
+            if (!lockAt) return interaction.reply({ content: '❌ صيغة التاريخ أو الوقت غير صحيحة.', ephemeral: true });
+            db.updateTask(taskId, { lock_at: lockAt.toISOString() });
+            const lockTs = Math.floor(lockAt.getTime() / 1000);
+            return interaction.reply({ content: `✅ تم تعديل الديدلاين! الموعد الجديد: <t:${lockTs}:F>`, ephemeral: true });
+        }
+    } catch (e) {
+        console.error('❌ processTaskEditModals:', e);
+        await interaction.reply({ content: ERR, ephemeral: true }).catch(() => {});
+    }
+}
+
 // ==========================================
 // Central handler for /admin tasks group
 // ==========================================
@@ -643,6 +738,8 @@ async function handleTasks(interaction, deps) {
             return taskLinkExecute(interaction, deps);
         case 'task_edit_deadline':
             return taskEditDeadlineExecute(interaction, deps);
+        case 'task_edit':
+            return taskEditExecute(interaction, deps);
         case 'task_delete':
             return taskDeleteExecute(interaction, deps);
         case 'sync_tasks':
@@ -652,12 +749,57 @@ async function handleTasks(interaction, deps) {
     }
 }
 
+async function taskEditExecute(interaction, { db }) {
+    try {
+        await interaction.deferReply({ ephemeral: true });
+        const taskId = interaction.options.getInteger('task_id');
+        const task = db.getTask ? db.getTask(taskId) : null;
+
+        if (!task) {
+            return interaction.editReply(`❌ المهمة رقم ${taskId} غير موجودة.`);
+        }
+
+        const lockTs = Math.floor(new Date(task.lock_at).getTime() / 1000);
+        const embed = new EmbedBuilder()
+            .setColor(0xF9C22E)
+            .setTitle(`✏️ تعديل المهمة #${task.id}`)
+            .setDescription(
+                `**العنوان:** ${task.title}\n` +
+                `**النوع:** ${task.type === 'weekly' ? 'أسبوعية' : 'شهرية'}\n` +
+                `**الترتيب:** ${task.task_order}\n` +
+                `**الديدلاين:** <t:${lockTs}:F>` 
+            );
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`btn_task_edit_info_${taskId}`)
+                .setLabel('✏️ تعديل المعلومات')
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId(`btn_task_edit_dl_${taskId}`)
+                .setLabel('📅 تعديل الديدلاين')
+                .setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder()
+                .setCustomId(`btn_task_delete_${taskId}`)
+                .setLabel('🗑️ حذف المهمة')
+                .setStyle(ButtonStyle.Danger)
+        );
+
+        await interaction.editReply({ embeds: [embed], components: [row] });
+    } catch (e) {
+        console.error('❌ taskEditExecute:', e);
+        await interaction.editReply(ERR).catch(() => {});
+    }
+}
+
 module.exports = { 
     handleTasks, 
     processTaskCreateModal, 
     handleTaskSelectMenu, 
     handleTaskButtons, 
     processTaskEditDeadlineModal,
-    taskDeleteExecute 
+    taskDeleteExecute,
+    taskEditExecute,
+    processTaskEditModals 
 };
 

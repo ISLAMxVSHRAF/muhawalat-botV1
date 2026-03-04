@@ -1384,7 +1384,7 @@ class MuhawalatDatabase {
   }
 
     updateTask(taskId, fields) {
-        const allowed = ['type', 'task_order', 'period', 'lock_at', 'is_locked'];
+        const allowed = ['title', 'type', 'task_order', 'period', 'lock_at', 'is_locked'];
         const sets = [], vals = [];
         for (const [k, v] of Object.entries(fields)) {
             if (allowed.includes(k)) { sets.push(`${k} = ?`); vals.push(v); }
