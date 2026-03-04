@@ -475,11 +475,11 @@ async function showDashboardPage(interaction, db, client, page) {
     const guild = interaction.guild;
     const allUsers = db.getAllUsers();
     const archived = db.getArchivedUsers();
-    // Use cached guild members — only fetch if cache is empty
+
+    // Use cached guild members
     let activeMembers = allUsers;
     if (process.env.MEMBER_ROLE_ID) {
         try {
-            // Use already-cached members instead of fetching every time
             let guildMembers = guild.members.cache;
             if (guildMembers.size < 2) {
                 guildMembers = await guild.members.fetch({ time: 10000 }).catch(() => guild.members.cache);
@@ -488,14 +488,23 @@ async function showDashboardPage(interaction, db, client, page) {
                 const m = guildMembers.get(u.user_id);
                 return m && m.roles.cache.has(process.env.MEMBER_ROLE_ID);
             });
-        } catch (e) {
-            activeMembers = allUsers;
-        }
+        } catch (e) { activeMembers = allUsers; }
     }
-    const season      = db.getActiveMonth ? db.getActiveMonth() : null;
-    const todayStr    = new Date().toLocaleDateString('ar-EG', { timeZone: 'Africa/Cairo', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-    // ── Nav buttons (always shown) ──────────────────────────────
+    const season = db.getActiveMonth ? db.getActiveMonth() : null;
+    const nowCairo = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Cairo' }));
+    const todayStr = nowCairo.toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+    // Season info
+    let weekNumber = '-', remaining = '-', seasonLabel = 'لا يوجد سيزون نشط';
+    if (season) {
+        const diff = Math.floor((nowCairo - new Date(season.start_date)) / 86400000);
+        weekNumber = Math.min(4, Math.floor(diff / 7) + 1);
+        remaining = Math.max(0, (season.duration_days || 28) - diff);
+        seasonLabel = `الأسبوع ${weekNumber} — باقي ${remaining} يوم`;
+    }
+
+    // Nav
     const nav = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('dash_overview').setLabel('🏠 عام').setStyle(page === 'overview' ? ButtonStyle.Primary : ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('dash_reports').setLabel('📝 التقارير').setStyle(page === 'reports' ? ButtonStyle.Primary : ButtonStyle.Secondary),
@@ -504,118 +513,146 @@ async function showDashboardPage(interaction, db, client, page) {
         new ButtonBuilder().setCustomId('dash_members').setLabel('👥 الأعضاء').setStyle(page === 'members' ? ButtonStyle.Primary : ButtonStyle.Secondary)
     );
 
-    let embed, actionRow;
+    const refreshRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('dash_refresh').setLabel('🔄 تحديث').setStyle(ButtonStyle.Success)
+    );
 
-    // ════════════════════════════════════════
-    // 🏠 PAGE 1 — OVERVIEW
-    // ════════════════════════════════════════
+    let embed;
+
+    // ══════════════════════════════════
+    // 🏠 OVERVIEW
+    // ══════════════════════════════════
     if (page === 'overview') {
-        const leaderboard = db.getLeaderboard(1);
-        const topUser = leaderboard[0];
+        const cairoDate = db.getCairoLogicalDate ? db.getCairoLogicalDate() : new Date().toISOString().split('T')[0];
+        const todayReports = db.getDailyReports(cairoDate);
+        const reportedToday = todayReports.length;
+        const totalActive = activeMembers.length;
+        const pct = totalActive > 0 ? Math.round((reportedToday / totalActive) * 100) : 0;
+
         const weekStats = db.getWeeklyReportStats();
-        const todayReports = weekStats[0]?.count || 0;
-        
-        const nowCairo = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Cairo' }));
-        let seasonInfo = '❌ لا يوجد Season نشط';
-        let weekNumber = '-';
-        if (season) {
-            const diff = Math.floor((nowCairo - new Date(season.start_date)) / 86400000);
-            weekNumber = Math.min(4, Math.floor(diff / 7) + 1);
-            const remaining = (season.duration_days || 28) - diff;
-            seasonInfo = `الأسبوع ${weekNumber} | باقي ${remaining} يوم`;
-        }
+        const last7 = weekStats.slice(0, 7).map(s => `${s.count}`).join(' · ') || '—';
+
+        const warned = allUsers.filter(u => (u.warning_count || 0) > 0);
+        const weeklyTasks = db.getActiveTasks(guild.id, 'weekly');
+        const monthlyTasks = db.getActiveTasks(guild.id, 'monthly');
+        const activeTasks = weeklyTasks.length + monthlyTasks.length;
+
+        const topUser = db.getLeaderboard(1)[0];
 
         embed = new EmbedBuilder()
-            .setColor(CONFIG.COLORS.primary)
+            .setColor(0xF9C22E)
             .setTitle('📊 لوحة التحكم — نظرة عامة')
-            .setDescription(`> 📅 ${todayStr}`)
-            .addFields(
-                { name: '👥 الأعضاء النشطين', value: `**${activeMembers.length}**`, inline: true },
-                { name: '📦 مؤرشفين', value: `**${archived.length}**`, inline: true },
-                { name: '📝 تقارير امبارح', value: `**${todayReports}**`, inline: false },
-                { name: '🗓️ السيزون', value: seasonInfo, inline: false },
-                { name: '🔥 أعلى ستريك', value: topUser ? `**${topUser.name}** (${topUser.days_streak} يوم)` : 'لا يوجد', inline: false },
-                { name: '📈 إجمالي الأعضاء', value: `**${activeMembers.length + archived.length}**`, inline: true }
+            .setDescription(
+                `📅 **${todayStr}**\n` +
+                `━━━━━━━━━━━━━━━━━━\n` +
+                `👥 **الأعضاء:** ${totalActive} نشط | ${archived.length} مؤرشف\n` +
+                `� **تقارير النهارده:** ${reportedToday}/${totalActive} — **${pct}%**\n` +
+                `� **آخر 7 أيام:** ${last7}\n` +
+                `━━━━━━━━━━━━━━━━━━\n` +
+                `🗓️ **السيزون:** ${seasonLabel}\n` +
+                `🎯 **مهام نشطة:** ${activeTasks}\n` +
+                `━━━━━━━━━━━━━━━━━━\n` +
+                `${warned.length > 0 ? `⚠️ **إنذارات:** ${warned.length} عضو عندهم إنذارات\n` : '✅ لا يوجد إنذارات\n'}` +
+                `${topUser ? `� **أعلى ستريك:** ${topUser.name} (${topUser.days_streak} يوم)` : ''}` 
             )
             .setFooter({ text: 'Muhawalat Dashboard • يتحدث عند كل ضغطة' });
-
-        actionRow = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('dash_refresh').setLabel('🔄 تحديث').setStyle(ButtonStyle.Success)
-        );
     }
 
-    // ════════════════════════════════════════
-    // 📝 PAGE 2 — REPORTS
-    // ════════════════════════════════════════
+    // ══════════════════════════════════
+    // 📝 REPORTS
+    // ══════════════════════════════════
     else if (page === 'reports') {
         const cairoDate = db.getCairoLogicalDate ? db.getCairoLogicalDate() : new Date().toISOString().split('T')[0];
         const todayReports = db.getDailyReports(cairoDate);
         const reportedIds = new Set(todayReports.map(r => r.user_id));
         const missing = activeMembers.filter(u => !reportedIds.has(u.user_id));
-        const weekStats = db.getWeeklyReportStats();
+        const pct = activeMembers.length > 0 ? Math.round((reportedIds.size / activeMembers.length) * 100) : 0;
 
-        let weekSummary = weekStats.slice(0, 7).map(s => `${s.report_date}: **${s.count}** تقرير`).join('\n') || 'لا توجد بيانات';
+        const weekStats = db.getWeeklyReportStats();
+        const weekSummary = weekStats.slice(0, 7).map(s => `\`${s.report_date}\` — **${s.count}** تقرير`).join('\n') || '—';
+
+        const doneVal = reportedIds.size > 0
+            ? [...reportedIds].slice(0, 15).map(id => `<@${id}>`).join(' ')
+            : '—';
+        const missingVal = missing.length > 0
+            ? missing.slice(0, 25).map(u => `<@${u.user_id}>`).join(' ')
+            : '✅ الكل عمل تقرير!';
 
         embed = new EmbedBuilder()
-            .setColor(CONFIG.COLORS.info)
+            .setColor(0xF15946)
             .setTitle('📝 لوحة التحكم — التقارير')
+            .setDescription(`📅 **${todayStr}** — نسبة اليوم: **${pct}%**`)
             .addFields(
-                { name: `✅ عملوا تقرير امبارح (${reportedIds.size})`, value: reportedIds.size > 0 ? [...reportedIds].slice(0, 10).map(id => `<@${id}>`).join(' ') || '-' : '—', inline: false },
-                { name: `❌ لم يعملوا تقرير (${missing.length})`, value: missing.length > 0 ? missing.slice(0, 20).map(u => `<@${u.user_id}>`).join(' ') : '✅ الكل عمل تقرير!', inline: false },
-                { name: '📅 إحصائيات آخر 7 أيام', value: weekSummary, inline: false }
-            )
-            .setFooter({ text: `نسبة اليوم: ${activeMembers.length > 0 ? Math.round((reportedIds.size / activeMembers.length) * 100) : 0}%` });
-
-        actionRow = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('dash_refresh').setLabel('🔄 تحديث').setStyle(ButtonStyle.Success)
-        );
+                { name: `✅ عملوا تقرير (${reportedIds.size}/${activeMembers.length})`, value: doneVal, inline: false },
+                { name: `❌ لم يعملوا تقرير (${missing.length})`, value: missingVal, inline: false },
+                { name: '� إحصائيات آخر 7 أيام', value: weekSummary, inline: false }
+            );
     }
 
-    // ════════════════════════════════════════
-    // 🎯 PAGE 3 — TASKS
-    // ════════════════════════════════════════
+    // ══════════════════════════════════
+    // 🎯 TASKS
+    // ══════════════════════════════════
     else if (page === 'tasks') {
-        const guildId = guild.id;
-        const weeklyTasks = db.getActiveTasks(guildId, 'weekly');
-        const monthlyTasks = db.getActiveTasks(guildId, 'monthly');
+        const weeklyTasks = db.getActiveTasks(guild.id, 'weekly');
+        const monthlyTasks = db.getActiveTasks(guild.id, 'monthly');
         const challenges = db.getActiveChallenges ? db.getActiveChallenges() : [];
 
         const formatTask = (t) => {
             const lockTs = Math.floor(new Date(t.lock_at).getTime() / 1000);
             const count = db.getTaskCompletionCount ? db.getTaskCompletionCount(t.id) : 0;
-            return `**#${t.id}** ${t.title} — ينتهي <t:${lockTs}:R> (${count} مشارك)`;
+            const pct = activeMembers.length > 0 ? Math.round((count / activeMembers.length) * 100) : 0;
+            return `**${t.title}** — <t:${lockTs}:R> | ${count}/${activeMembers.length} (${pct}%)`;
+        };
+
+        const formatChallenge = (c) => {
+            const logs = db.getChallengeStats ? db.getChallengeStats(c.id) : null;
+            const participants = logs?.participant_count || 0;
+            return `**${c.title}** — ${participants} مشارك`;
         };
 
         embed = new EmbedBuilder()
-            .setColor(CONFIG.COLORS.success)
-            .setTitle('🎯 لوحة التحكم — المهام والتحديات')
+            .setColor(0xF9C22E)
+            .setTitle('🎯 لوحة التحكم — المهام')
             .addFields(
-                { name: `📅 مهام أسبوعية (${weeklyTasks.length})`, value: weeklyTasks.length > 0 ? weeklyTasks.map(formatTask).join('\n') : 'لا توجد مهام أسبوعية نشطة', inline: false },
-                { name: `🗓️ مهام شهرية (${monthlyTasks.length})`, value: monthlyTasks.length > 0 ? monthlyTasks.map(formatTask).join('\n') : 'لا توجد مهام شهرية نشطة', inline: false },
-                { name: `🏆 تحديات نشطة (${challenges.length})`, value: challenges.length > 0 ? challenges.map(c => `**${c.title}** — ${c.duration_days} يوم`).join('\n') : 'لا توجد تحديات نشطة', inline: false }
+                {
+                    name: `📅 مهام أسبوعية (${weeklyTasks.length})`,
+                    value: weeklyTasks.length > 0 ? weeklyTasks.map(formatTask).join('\n') : '—',
+                    inline: false
+                },
+                {
+                    name: `🗓️ مهام شهرية (${monthlyTasks.length})`,
+                    value: monthlyTasks.length > 0 ? monthlyTasks.map(formatTask).join('\n') : '—',
+                    inline: false
+                },
+                {
+                    name: `🏆 تحديات نشطة (${challenges.length})`,
+                    value: challenges.length > 0 ? challenges.map(formatChallenge).join('\n') : '—',
+                    inline: false
+                }
             );
-
-        actionRow = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('dash_refresh').setLabel('🔄 تحديث').setStyle(ButtonStyle.Success)
-        );
     }
 
-    // ════════════════════════════════════════
-    // ⚠️ PAGE 4 — WARNINGS
-    // ════════════════════════════════════════
+    // ══════════════════════════════════
+    // ⚠️ WARNINGS
+    // ══════════════════════════════════
     else if (page === 'warnings') {
         const warned = allUsers.filter(u => (u.warning_count || 0) > 0).sort((a, b) => b.warning_count - a.warning_count);
         const pendingTimeouts = db.getPendingTimeouts ? db.getPendingTimeouts() : [];
 
         embed = new EmbedBuilder()
-            .setColor(CONFIG.COLORS.danger)
+            .setColor(0xF15946)
             .setTitle('⚠️ لوحة التحكم — الإنذارات')
+            .setDescription(
+                warned.length === 0
+                    ? '✅ لا يوجد إنذارات حالياً'
+                    : `إجمالي الإنذارات: **${warned.reduce((s, u) => s + (u.warning_count || 0), 0)}**` 
+            )
             .addFields(
                 {
-                    name: `🔴 أعضاء عندهم إنذارات (${warned.length})`,
+                    name: `🔴 عندهم إنذارات (${warned.length})`,
                     value: warned.length > 0
-                        ? warned.slice(0, 15).map(u => `**${u.name}** — ${'⚠️'.repeat(u.warning_count)} (${u.warning_count}/3)`).join('\n')
-                        : '✅ لا يوجد إنذارات حالياً',
+                        ? warned.slice(0, 15).map(u => `<@${u.user_id}> — ${'⚠️'.repeat(u.warning_count)} ${u.warning_count}/3`).join('\n')
+                        : '—',
                     inline: false
                 },
                 {
@@ -625,17 +662,12 @@ async function showDashboardPage(interaction, db, client, page) {
                         : '✅ لا يوجد',
                     inline: false
                 }
-            )
-            .setFooter({ text: `إجمالي الإنذارات: ${warned.reduce((sum, u) => sum + (u.warning_count || 0), 0)}` });
-
-        actionRow = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('dash_refresh').setLabel('🔄 تحديث').setStyle(ButtonStyle.Success)
-        );
+            );
     }
 
-    // ════════════════════════════════════════
-    // 👥 PAGE 5 — MEMBERS
-    // ════════════════════════════════════════
+    // ══════════════════════════════════
+    // 👥 MEMBERS
+    // ════════════════════════════════════
     else if (page === 'members') {
         const inactive = db.getInactiveUsers ? db.getInactiveUsers() : [];
         const activeMemberIds = new Set(activeMembers.map(u => u.user_id));
@@ -643,7 +675,7 @@ async function showDashboardPage(interaction, db, client, page) {
         const leaderboard = db.getLeaderboard(5);
 
         embed = new EmbedBuilder()
-            .setColor(CONFIG.COLORS.warning)
+            .setColor(0x7286A0)
             .setTitle('👥 لوحة التحكم — الأعضاء')
             .addFields(
                 {
@@ -652,36 +684,32 @@ async function showDashboardPage(interaction, db, client, page) {
                     inline: false
                 },
                 {
-                    name: `😴 غير نشطين هذا الأسبوع (${activeInactive.length})`,
-                    value: activeInactive.length > 0 ? activeInactive.slice(0, 15).map(u => `**${u.name}**`).join('، ') : '✅ الكل نشط!',
+                    name: `😴 أقل من 5 تقارير هذا الأسبوع (${activeInactive.length})`,
+                    value: activeInactive.length > 0
+                        ? activeInactive.slice(0, 20).map(u => `<@${u.user_id}>`).join(' ')
+                        : '✅ الكل نشط!',
                     inline: false
                 },
                 {
                     name: '🏆 أفضل 5 هذا الأسبوع',
-                    value: leaderboard.length > 0 ? leaderboard.map((u, i) => `${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} **${u.name}** — ${Math.round(u.avg_rate || 0)}%`).join('\n') : 'لا توجد بيانات',
+                    value: leaderboard.length > 0
+                        ? leaderboard.map((u, i) => `${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} **${u.name}** — ${Math.round(u.avg_rate || 0)}%`).join('\n')
+                        : '—',
                     inline: false
                 }
             );
-
-        actionRow = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('dash_refresh').setLabel('🔄 تحديث').setStyle(ButtonStyle.Success)
-        );
     }
 
-    // Handle both slash command (deferReply) and button (deferUpdate) interactions
     if (interaction.replied || interaction.deferred) {
-        await interaction.editReply({ embeds: [embed], components: [nav, actionRow] });
+        await interaction.editReply({ embeds: [embed], components: [nav, refreshRow] });
     } else {
-        await interaction.reply({ embeds: [embed], components: [nav, actionRow], flags: 64 });
+        await interaction.reply({ embeds: [embed], components: [nav, refreshRow], flags: 64 });
     }
     } catch (e) {
         console.error('❌ showDashboardPage error:', e.message, e.stack);
-        const msg = { content: `❌ خطأ في الداشبورد: ${e.message}`, embeds: [], components: [] };
-        if (interaction.replied || interaction.deferred) {
-            await interaction.editReply(msg).catch(() => {});
-        } else {
-            await interaction.reply({ ...msg, flags: 64 }).catch(() => {});
-        }
+        const msg = { content: `❌ خطأ: ${e.message}`, embeds: [], components: [] };
+        if (interaction.replied || interaction.deferred) await interaction.editReply(msg).catch(() => {});
+        else await interaction.reply({ ...msg, flags: 64 }).catch(() => {});
     }
 }
 
