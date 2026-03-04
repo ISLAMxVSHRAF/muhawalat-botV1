@@ -30,8 +30,20 @@ const NUDGE_MESSAGES = {
         'إزيك يا {name}؟ 🧡\nنتمنى تكون بخير وأيامك طيبة �\n\nتقاريرك الفترة دي كانت {count} من أصل {days} — شايفين مجهودك وبنقدّره 💛\n\nكمّل على نفس الوتيرة 🧡\n\n— فريق محاولات 🌱',
         'إزيك يا {name}؟ 🧡\nنتمنى تكون بخير وأيامك طيبة �\n\n{count} من أصل {days} تقارير — ده مجهود حقيقي يستاهل 💛\n\nاستمر، إحنا شايفينك 🧡\n\n— فريق محاولات 🌱',
         'إزيك يا {name}؟ 🧡\nنتمنى تكون بخير وأيامك طيبة �\n\nتقاريرك الفترة دي كانت {count} من أصل {days} — كمّل على نفس الإيقاع 💛\n\nبنتابعك وبنقدّر مجهودك 🧡\n\n— فريق محاولات 🌱',
+    ],
+    complete: [
+        'إزيك يا {name}؟ 🧡\nنتمنى تكون بخير وأيامك طيبة 🌿\n\n{count} من أصل {days} تقارير — ده مجهود استثنائي يستاهل كل التقدير 💛\n\nشكراً إنك بتلتزم وبتكون قدوة للمجتمع 🧡\n\n— فريق محاولات 🌱',
+        'إزيك يا {name}؟ 🧡\nنتمنى تكون بخير وأيامك طيبة 🌿\n\n{count} من أصل {days} تقارير — شايفين ثباتك وبنقدّره جداً 💛\n\nاستمر، ثباتك ده مش بيمر من غير ما نشوفه 🧡\n\n— فريق محاولات 🌱',
+        'إزيك يا {name}؟ 🧡\nنتمنى تكون بخير وأيامك طيبة 🌿\n\n{count} من أصل {days} تقارير — الالتزام ده بيبان وبيأثر في المجتمع كله 💛\n\nكمّل على نفس الإيقاع 🧡\n\n— فريق محاولات 🌱',
     ]
 };
+
+const RADAR_CATEGORIES = [
+    { key: 'complete', label: 'ملتزم تماماً', emoji: '🏆', color: 0xF9C22E },
+    { key: 'good',     label: 'أداء جيد',     emoji: '⭐', color: 0xF9C22E },
+    { key: 'danger',   label: 'في خطر',       emoji: '🟠', color: 0xF15946 },
+    { key: 'zero',     label: 'مختفي',         emoji: '🔴', color: 0xF15946 },
+];
 
 // ==========================================
 // ⚠️ issueWarning + helpers (from warnings.js)
@@ -403,94 +415,101 @@ async function segmentUsersByReports(db, days, guild) {
     return { complete, good, danger, zero, startStr, endStr };
 }
 
+async function showRadarCategoryPage(interaction, adminId, pageIndex, days, data) {
+    const cat = RADAR_CATEGORIES[pageIndex];
+    const members = data[cat.key] || [];
+
+    const formatList = arr =>
+        arr.length ? arr.slice(0, 40).map(u => `<@${u.user_id}>`).join(' · ') : '—';
+
+    const formatWithCounts = arr =>
+        arr.length ? arr.slice(0, 40).map(u => `<@${u.user_id}> (${u.reportCount ?? 0})`).join(' · ') : '—';
+
+    const value = (cat.key === 'complete' || cat.key === 'zero')
+        ? formatList(members)
+        : formatWithCounts(members);
+
+    const embed = new EmbedBuilder()
+        .setColor(cat.color)
+        .setTitle(`📡 رادار النشاط — ${cat.emoji} ${cat.label}`)
+        .setDescription(`تحليل نشاط الأعضاء خلال آخر **${days}** يوم.\nالفترة: **${data.rangeLabel}**`)
+        .addFields({
+            name: `${cat.emoji} ${cat.label} (${members.length} عضو)`,
+            value: value || '—',
+            inline: false
+        })
+        .setFooter({ text: `الصفحة ${pageIndex + 1} من ${RADAR_CATEGORIES.length}` });
+
+    const navRow = new ActionRowBuilder();
+
+    if (pageIndex > 0) {
+        navRow.addComponents(
+            new ButtonBuilder()
+                .setCustomId(`btn_radar_cat_${adminId}_${pageIndex - 1}_${days}`)
+                .setLabel('◀️ السابق')
+                .setStyle(ButtonStyle.Secondary)
+        );
+    }
+
+    if (pageIndex < RADAR_CATEGORIES.length - 1) {
+        navRow.addComponents(
+            new ButtonBuilder()
+                .setCustomId(`btn_radar_cat_${adminId}_${pageIndex + 1}_${days}`)
+                .setLabel('التالي ▶️')
+                .setStyle(ButtonStyle.Secondary)
+        );
+    }
+
+    const nudgeRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`btn_radar_nudge_${cat.key}_${days}`)
+            .setLabel(`🔔 تنبيه ${cat.label}`)
+            .setStyle(cat.key === 'zero' ? ButtonStyle.Danger : cat.key === 'danger' ? ButtonStyle.Primary : ButtonStyle.Success)
+            .setDisabled(members.length === 0)
+    );
+
+    await interaction.editReply({ embeds: [embed], components: [navRow, nudgeRow] });
+}
+
 async function radarExecute(interaction, { db }) {
     try {
         await interaction.deferReply({ ephemeral: true });
         const daysInput = interaction.options.getInteger('days');
-        const days = daysInput && daysInput > 0 ? daysInput : 7;
+        const days = daysInput && daysInput > 0 ? daysInput :7;
 
         const { complete, good, danger, zero, startStr, endStr } = await segmentUsersByReports(
-            db,
-            days,
-            interaction.guild
+            db, days, interaction.guild
         );
 
-        const rangeLabel =
-            days === 1
-                ? startStr
-                : `${startStr} → ${endStr}`;
+        const rangeLabel = days === 1 ? startStr : `${startStr} → ${endStr}`;
 
-        const formatList = arr =>
-            arr.length
-                ? arr
-                      .slice(0, 30)
-                      .map(u => `<@${u.user_id}>`)
-                      .join(' · ')
-                : '—';
-
-        const formatWithCounts = arr =>
-            arr.length
-                ? arr
-                      .slice(0, 30)
-                      .map(
-                          u =>
-                              `<@${u.user_id}> (${u.reportCount} تقارير)`
-                      )
-                      .join('\n')
-                : '—';
-
-        const embed = new EmbedBuilder()
-            .setColor(CONFIG.COLORS.primary)
-            .setTitle('📡 رادار النشاط')
-            .setDescription(
-                `تحليل نشاط الأعضاء خلال آخر **${days}** يوم.\n` +
-                    `الفترة: **${rangeLabel}**`
-            )
-            .addFields(
-                {
-                    name: `🟢 **ملتزم تماماً** (${complete.length})`,
-                    value: formatList(complete),
-                    inline: false
-                },
-                {
-                    name: `� **أداء جيد** (${good.length})`,
-                    value: formatWithCounts(good),
-                    inline: false
-                },
-                {
-                    name: `🟡 **في خطر** (${danger.length})`,
-                    value: formatWithCounts(danger),
-                    inline: false
-                },
-                {
-                    name: `🔴 **مختفي** (${zero.length})`,
-                    value: formatList(zero),
-                    inline: false
-                }
-            );
-
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId(`btn_radar_nudge_zero_${days}`)
-                .setLabel('🔔 المختفي')
-                .setStyle(ButtonStyle.Danger),
-            new ButtonBuilder()
-                .setCustomId(`btn_radar_nudge_danger_${days}`)
-                .setLabel('🔔 في خطر')
-                .setStyle(ButtonStyle.Primary),
-            new ButtonBuilder()
-                .setCustomId(`btn_radar_nudge_good_${days}`)
-                .setLabel('🌟 تشجيع الجيد')
-                .setStyle(ButtonStyle.Success)
-        );
-
-        await interaction.editReply({
-            embeds: [embed],
-            components: [row]
+        _radarSelectionCache.set(`overview_${interaction.user.id}`, {
+            days, complete, good, danger, zero, rangeLabel
         });
+
+        await showRadarCategoryPage(interaction, interaction.user.id, 0, days, { complete, good, danger, zero, rangeLabel });
     } catch (e) {
         console.error('❌ radar:', e);
         await interaction.editReply(ERR).catch(() => {});
+    }
+}
+
+async function handleRadarCategoryNav(interaction) {
+    try {
+        await interaction.deferUpdate();
+        const parts = interaction.customId.split('_'); // btn_radar_cat_adminId_pageIndex_days
+        const adminId = parts[3];
+        const pageIndex = parseInt(parts[4], 10);
+        const days = parseInt(parts[5], 10) || 7;
+
+        const cached = _radarSelectionCache.get(`overview_${adminId}`);
+        if (!cached) {
+            return interaction.editReply({ content: '❌ انتهت الجلسة، أعد تشغيل الرادار.', embeds: [], components: [] });
+        }
+
+        await showRadarCategoryPage(interaction, adminId, pageIndex, days, cached);
+    } catch (e) {
+        console.error('❌ handleRadarCategoryNav:', e);
     }
 }
 
@@ -507,9 +526,9 @@ async function handleRadarNudgeButton(interaction, deps) {
         await interaction.deferReply({ ephemeral: true });
 
         const { db } = deps;
-        const { good, danger, zero } = await segmentUsersByReports(db, days, interaction.guild);
+        const { complete, good, danger, zero } = await segmentUsersByReports(db, days, interaction.guild);
 
-        const allTargets = type === 'zero' ? zero : type === 'danger' ? danger : good;
+        const allTargets = type === 'zero' ? zero : type === 'danger' ? danger : type === 'complete' ? complete : good;
 
         if (!allTargets.length) {
             return interaction.editReply(`ℹ️ لا يوجد أعضاء في فئة ${type === 'zero' ? 'المختفي' : type === 'danger' ? 'في خطر' : 'أداء جيد'}.`);
@@ -535,10 +554,10 @@ async function showRadarSelectionPage(interaction, type, days, targets, excluded
     const pageTargets = targets.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
     const remaining = targets.filter(u => !excluded.has(u.user_id));
 
-    const typeLabel = type === 'zero' ? '🔴 المختفي' : type === 'danger' ? '🟠 في خطر' : '🌟 أداء جيد';
+    const typeLabel = type === 'zero' ? '🔴 المختفي' : type === 'danger' ? '🟠 في خطر' : type === 'complete' ? '� ملتزم تماماً' : '⭐ أداء جيد';
 
     const embed = new EmbedBuilder()
-        .setColor(type === 'zero' ? 0xF15946 : type === 'danger' ? 0xF9C22E : 0xF9C22E)
+        .setColor(type === 'zero' ? 0xF15946 : type === 'danger' ? 0xF9C22E : type === 'complete' ? 0xF9C22E : 0xF9C22E)
         .setTitle(`📡 اختيار الأعضاء — ${typeLabel}`)
         .setDescription(
             `إجمالي الأعضاء: **${targets.length}** | سيتم الإرسال لـ: **${remaining.length}**\n` +
@@ -820,7 +839,7 @@ async function executeRadarRouting(interaction, { db, client }) {
         }
 
         await interaction.editReply(
-            `✅ تم إرسال تنبيه الرادار لفئة **${type === 'zero' ? 'المختفي' : type === 'danger' ? 'في خطر' : 'أداء جيد'}** خلال آخر ${days} يوم.\n` +
+            `✅ تم إرسال تنبيه الرادار لفئة **${type === 'zero' ? 'المختفي' : type === 'danger' ? 'في خطر' : type === 'complete' ? 'ملتزم تماماً' : 'أداء جيد'}** خلال آخر ${days} يوم.\n` +
                 `• DM: ${dmSent}\n` +
                 `• Threads: ${threadSent}\n` +
                 `• فشل الإرسال: ${failed}`
@@ -1121,6 +1140,7 @@ module.exports = {
     executeRadarRouting,
     handleRadarExcludeSelect,
     handleRadarPageNav,
-    handleRadarConfirm
+    handleRadarConfirm,
+    handleRadarCategoryNav
 };
 

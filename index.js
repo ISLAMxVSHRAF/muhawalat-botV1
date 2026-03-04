@@ -40,7 +40,8 @@ const {
     executeRadarRouting,
     handleRadarExcludeSelect,
     handleRadarPageNav,
-    handleRadarConfirm
+    handleRadarConfirm,
+    handleRadarCategoryNav
 } = require('./src/commands/users');
 
 // ==========================================
@@ -318,6 +319,7 @@ client.on('interactionCreate', async interaction => {
             if (id.startsWith('dr_')) return handleDailyReportButton(interaction, db);
             if (id.startsWith('btn_radar_nudge_')) return handleRadarNudgeButton(interaction, { db, client });
             if (id.startsWith('btn_radar_page_')) return handleRadarPageNav(interaction);
+            if (id.startsWith('btn_radar_cat_')) return handleRadarCategoryNav(interaction);
             if (id.startsWith('btn_radar_confirm_')) return handleRadarConfirm(interaction);
             if (id.startsWith('btn_radar_send_')) return executeRadarRouting(interaction, { db, client });
 
