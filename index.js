@@ -319,6 +319,7 @@ client.on('interactionCreate', async interaction => {
             if (id.startsWith('btn_radar_nudge_')) return handleRadarNudgeButton(interaction, { db, client });
             if (id.startsWith('btn_radar_page_')) return handleRadarPageNav(interaction);
             if (id.startsWith('btn_radar_confirm_')) return handleRadarConfirm(interaction);
+            if (id.startsWith('btn_radar_send_')) return executeRadarRouting(interaction, { db, client });
 
             if (id.startsWith('harvest_')) {
                 await interaction.deferReply({ ephemeral: true });
@@ -685,9 +686,6 @@ client.on('interactionCreate', async interaction => {
                 const userId = interaction.customId.replace('timeout_duration_', '');
                 const duration = parseInt(interaction.values[0]); // بالدقائق
                 return executeTimeout(interaction, userId, duration, db);
-            }
-            if (interaction.customId.startsWith('btn_radar_send_')) {
-                return executeRadarRouting(interaction, { db, client });
             }
         }
         else if (interaction.type === InteractionType.ModalSubmit) {
