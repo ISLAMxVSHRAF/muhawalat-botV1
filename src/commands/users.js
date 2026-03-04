@@ -759,12 +759,11 @@ async function executeRadarRouting(interaction, { db, client }) {
         }
 
         const validTargets = targets;
-        const members = new Collection(); // for name fallback only
+        let members = new Collection();
         try {
-            members = await interaction.guild.members.fetch({ time: 120000 }); // wait up to 2 minutes
+            members = await interaction.guild.members.fetch({ time: 30000 });
         } catch (err) {
             console.log('Radar member fetch timed out gracefully.');
-            members = new Collection(); // fallback to empty collection
         }
 
         if (!validTargets.length) {
