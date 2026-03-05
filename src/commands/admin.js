@@ -248,6 +248,18 @@ const data = new SlashCommandBuilder()
                             .setDescription('رقم أو ترتيب المهمة')
                             .setRequired(true)
                     )
+                    .addStringOption(o =>
+                        o
+                            .setName('end_date')
+                            .setDescription('تاريخ انتهاء المهمة (DD-MM-YYYY) — اختياري')
+                            .setRequired(false)
+                    )
+                    .addStringOption(o =>
+                        o
+                            .setName('end_time')
+                            .setDescription('ساعة الانتهاء (HH:mm) — اختياري، افتراضي 23:59')
+                            .setRequired(false)
+                    )
             )
     )
 

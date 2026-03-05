@@ -289,8 +289,20 @@ async function syncTasksExecute(interaction, { db, client }) {
         const month = String(now.getMonth() + 1).padStart(2, '0');
         const period =
             type === 'weekly' ? `${year}-${month}-W${order}` : `${year}-${month}`;
-        const graceHours = type === 'weekly' ? 48 : 120;
-        const lockAt = new Date(now.getTime() + graceHours * 60 * 60 * 1000);
+
+        // Use manual deadline if provided, otherwise fallback to auto
+        const endDateOpt = interaction.options.getString('end_date');
+        const endTimeOpt = interaction.options.getString('end_time') || '23:59';
+        let lockAt;
+        if (endDateOpt) {
+            lockAt = parseDateTime(endDateOpt, endTimeOpt);
+            if (!lockAt) {
+                return interaction.editReply('❌ صيغة التاريخ غير صحيحة. استخدم DD-MM-YYYY و HH:mm');
+            }
+        } else {
+            const graceHours = type === 'weekly' ? 48 : 120;
+            lockAt = new Date(now.getTime() + graceHours * 60 * 60 * 1000);
+        }
         const title =
             (thread.name || 'مهمة')
                 .replace(/^📌\s*المهمة\s*(أسبوعية|شهرية)\s*\|\s*/i, '')
