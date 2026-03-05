@@ -445,6 +445,11 @@ const data = new SlashCommandBuilder()
             )
             .addSubcommand(sub =>
                 sub
+                    .setName('sync_members')
+                    .setDescription('مراجعة الأعضاء في الداتابيز ومقارنتهم بالسيرفر')
+            )
+            .addSubcommand(sub =>
+                sub
                     .setName('archive')
                     .setDescription('تجميد عضو وأرشفة مساحته')
                     .addUserOption(o =>

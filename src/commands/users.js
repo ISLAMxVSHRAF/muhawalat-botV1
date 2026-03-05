@@ -1108,6 +1108,107 @@ async function archivedExecute(interaction, { db }) {
     }
 }
 
+async function handleSyncMembersButtons(interaction, { db, client }) {
+    try {
+        await interaction.deferUpdate();
+        const cached = _radarSelectionCache.get(`sync_members_${interaction.user.id}`);
+        if (!cached) {
+            return interaction.editReply({ content: '❌ انتهت الجلسة، أعد تشغيل الأمر.', embeds: [], components: [] });
+        }
+
+        const toArchive = interaction.customId === 'btn_archive_departed'
+            ? cached.departed
+            : cached.noRole;
+
+        db.safeBackup('before-bulk-archive');
+
+        let count = 0;
+        for (const u of toArchive) {
+            db.archiveUser(u.user_id);
+            if (u.thread_id) {
+                try {
+                    const thread = await client.channels.fetch(u.thread_id).catch(() => null);
+                    if (thread) await thread.setArchived(true).catch(() => {});
+                } catch (_) {}
+            }
+            count++;
+            await new Promise(r => setTimeout(r, 200));
+        }
+
+        _radarSelectionCache.delete(`sync_members_${interaction.user.id}`);
+        await interaction.editReply({ content: `✅ تم أرشفة **${count}** عضو بنجاح.`, embeds: [], components: [] });
+    } catch (e) {
+        console.error('❌ handleSyncMembersButtons:', e);
+    }
+}
+
+async function syncMembersExecute(interaction, { db, client }) {
+    await interaction.deferReply({ ephemeral: true });
+    try {
+        const guild = interaction.guild;
+        let guildMembers = guild.members.cache;
+        if (guildMembers.size < 2) {
+            guildMembers = await guild.members.fetch({ time: 15000 }).catch(() => guild.members.cache);
+        }
+
+        const allUsers = db.getAllUsers();
+        const active = [];
+        const noRole = [];
+        const departed = [];
+
+        for (const u of allUsers) {
+            const member = guildMembers.get(u.user_id);
+            if (!member) {
+                departed.push(u);
+            } else if (process.env.MEMBER_ROLE_ID && !member.roles.cache.has(process.env.MEMBER_ROLE_ID)) {
+                noRole.push(u);
+            } else {
+                active.push(u);
+            }
+        }
+
+        const fmt = arr => arr.length ? arr.map(u => `**${u.name}**`).join('، ') : '—';
+
+        const embed = new EmbedBuilder()
+            .setColor(0xF9C22E)
+            .setTitle('👥 مراجعة الأعضاء')
+            .addFields(
+                { name: `✅ نشط (${active.length})`, value: fmt(active).slice(0, 500), inline: false },
+                { name: `⚠️ بدون رول (${noRole.length})`, value: fmt(noRole).slice(0, 500), inline: false },
+                { name: `❌ غادر السيرفر (${departed.length})`, value: fmt(departed).slice(0, 500), inline: false }
+            )
+            .setFooter({ text: `إجمالي في الداتابيز: ${allUsers.length}` });
+
+        const rows = [];
+
+        if (departed.length > 0) {
+            rows.push(new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('btn_archive_departed')
+                    .setLabel(`🗃️ أرشف الغادرين (${departed.length})`)
+                    .setStyle(ButtonStyle.Danger)
+            ));
+        }
+
+        if (noRole.length > 0) {
+            rows.push(new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('btn_archive_norole')
+                    .setLabel(`🗃️ أرشف بدون رول (${noRole.length})`)
+                    .setStyle(ButtonStyle.Secondary)
+            ));
+        }
+
+        // Cache for button handlers
+        _radarSelectionCache.set(`sync_members_${interaction.user.id}`, { departed, noRole });
+
+        await interaction.editReply({ embeds: [embed], components: rows });
+    } catch (e) {
+        console.error('❌ syncMembersExecute:', e);
+        await interaction.editReply('❌ حدث خطأ أثناء مراجعة الأعضاء.').catch(() => {});
+    }
+}
+
 async function handleUsers(interaction, deps) {
     const sub = interaction.options.getSubcommand();
     switch (sub) {
@@ -1129,6 +1230,8 @@ async function handleUsers(interaction, deps) {
             return radarExecute(interaction, deps);
         case 'clean_departed':
             return cleanDepartedExecute(interaction, deps);
+        case 'sync_members':
+            return syncMembersExecute(interaction, deps);
         case 'archive':
             return archiveExecute(interaction, deps);
         case 'restore':
@@ -1151,6 +1254,7 @@ module.exports = {
     handleRadarExcludeSelect,
     handleRadarPageNav,
     handleRadarConfirm,
-    handleRadarCategoryNav
+    handleRadarCategoryNav,
+    handleSyncMembersButtons
 };
 

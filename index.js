@@ -40,7 +40,8 @@ const {
     handleRadarExcludeSelect,
     handleRadarPageNav,
     handleRadarConfirm,
-    handleRadarCategoryNav
+    handleRadarCategoryNav,
+    handleSyncMembersButtons
 } = require('./src/commands/users');
 
 // ==========================================
@@ -576,6 +577,9 @@ client.on('interactionCreate', async interaction => {
             if (id === 'btn_goal_annual')  return showYearlyGoalModal(interaction, db);
             if (id === 'btn_goal_monthly') return showMonthlyGoalModal(interaction, db);
             if (id === 'btn_goal_weekly')  return showWeeklyGoalModal(interaction, db);
+            if (id === 'btn_archive_departed' || id === 'btn_archive_norole') {
+                return handleSyncMembersButtons(interaction, { db, client });
+            }
 
             if (id === 'btn_refresh') {
                 await interaction.deferUpdate();
