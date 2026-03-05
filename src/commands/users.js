@@ -368,11 +368,18 @@ async function timeoutListExecute(interaction, { db }) {
 function buildDateRange(days) {
     const TZ = process.env.TIMEZONE || 'Africa/Cairo';
     const cairoNow = new Date(new Date().toLocaleString('en-US', { timeZone: TZ }));
+
+    // لو قبل 10 بليل، اليوم الأخير هو امبارح عشان التقرير اليومي لسه ما نزلش
+    const hour = cairoNow.getHours();
     const end = new Date(
         cairoNow.getFullYear(),
         cairoNow.getMonth(),
         cairoNow.getDate()
     );
+    if (hour < 22) {
+        end.setDate(end.getDate() - 1);
+    }
+
     const start = new Date(end);
     start.setDate(start.getDate() - (days - 1));
 
