@@ -28,8 +28,7 @@ const {
     showCustomSetupModal,
     handleCustomSetup,
     showManualSetupModal,
-    handleManualSetup,
-    showDashboardPage
+    handleManualSetup
 } = require('./src/commands/system');
 const { handleAutoResponse, processScheduleAddModal, processAutorespondAddModal } = require('./src/commands/automation_cmds');
 const { handleDailyReportButton } = require('./src/commands/reports');
@@ -577,23 +576,6 @@ client.on('interactionCreate', async interaction => {
             if (id === 'btn_goal_annual')  return showYearlyGoalModal(interaction, db);
             if (id === 'btn_goal_monthly') return showMonthlyGoalModal(interaction, db);
             if (id === 'btn_goal_weekly')  return showWeeklyGoalModal(interaction, db);
-
-            if (id.startsWith('dash_')) {
-                const page = id.replace('dash_', '');
-                const validPages = ['overview', 'reports', 'tasks', 'warnings', 'members'];
-                let targetPage = validPages.includes(page) ? page : null;
-                if (!targetPage) {
-                    const currentEmbed = interaction.message?.embeds?.[0];
-                    const title = currentEmbed?.title || '';
-                    if (title.includes('التقارير')) targetPage = 'reports';
-                    else if (title.includes('المهام')) targetPage = 'tasks';
-                    else if (title.includes('الإنذارات')) targetPage = 'warnings';
-                    else if (title.includes('الأعضاء')) targetPage = 'members';
-                    else targetPage = 'overview';
-                }
-                await interaction.deferUpdate();
-                return showDashboardPage(interaction, db, client, targetPage);
-            }
 
             if (id === 'btn_refresh') {
                 await interaction.deferUpdate();

@@ -530,10 +530,6 @@ const data = new SlashCommandBuilder()
                     .setDescription('نسخة احتياطية من قاعدة البيانات')
             )
             .addSubcommand(sub =>
-                sub.setName('dashboard')
-                   .setDescription('📊 لوحة تحكم الأدمن الشاملة')
-            )
-            .addSubcommand(sub =>
                 sub
                     .setName('debug_status')
                     .setDescription(
