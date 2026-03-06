@@ -49,28 +49,39 @@ const RADAR_CATEGORIES = [
 // ⚠️ issueWarning + helpers (from warnings.js)
 // ==========================================
 
-async function issueWarning(userId, reason, adminId, { db, client }) {
+async function issueWarning(userId, reason, adminId, { db, client }, reasonType = 'manual', period = null) {
     const user = db.getUser(userId);
-    if (!user) return;
+    if (!user) return null;
 
-    const newCount = db.addWarning(userId, reason, adminId);
-    if (newCount < 0) return;
+    const newCount = db.addWarning(userId, reason, adminId, reasonType, period);
+    if (newCount < 0) return null; // -1 = error, -2 = duplicate
 
     const emoji = ['1️⃣', '2️⃣', '3️⃣'][newCount - 1] || '⚠️';
+
+    const warningMsg = 
+        `${emoji} **إنذار رسمي #${newCount}** <@${userId}>\n\n` +
+        `**السبب:** ${reason}\n\n` +
+        (newCount >= 3
+            ? '🚨 هذا إنذارك الثالث — ستتم مراجعة حالتك مع الإدارة.'
+            : 'الإنذار يُرفع تلقائياً بعد أسبوعين التزام متتالي. 💪');
 
     if (user.thread_id) {
         const thread = await client.channels.fetch(user.thread_id).catch(() => null);
         if (thread) {
-            await thread
-                .send(
-                    `${emoji} **إنذار رسمي #${newCount}** <@${userId}>\n\n` +
-                        `**السبب:** ${reason}\n\n` +
-                        (newCount >= 3
-                            ? '🚨 هذا إنذارك الثالث — ستتم مراجعة حالتك مع الإدارة.'
-                            : 'الإنذار يُرفع تلقائياً بعد أسبوعين التزام متتالي. 💪')
-                )
-                .catch(() => {});
+            await thread.send(warningMsg).catch(() => {});
+        } else {
+            // Fallback to DM if thread not found
+            try {
+                const discordUser = await client.users.fetch(userId).catch(() => null);
+                if (discordUser) await discordUser.send(warningMsg).catch(() => {});
+            } catch (_) {}
         }
+    } else {
+        // No thread — send DM directly
+        try {
+            const discordUser = await client.users.fetch(userId).catch(() => null);
+            if (discordUser) await discordUser.send(warningMsg).catch(() => {});
+        } catch (_) {}
     }
 
     const notifyId = process.env.NOTIFY_CORNER_ID;
@@ -123,6 +134,8 @@ async function issueWarning(userId, reason, adminId, { db, client }) {
         }
         db.addTimeoutPending(userId, reason, 3);
     }
+
+    return newCount;
 }
 
 function reply(interaction, content, ephemeral = true) {

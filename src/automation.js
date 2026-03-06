@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const cron = require('node-cron');
 const { announceChallengeEnd } = require('./commands/challenges');
+const { issueWarning } = require('./commands/users');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const CONFIG = require('./config');
 const { getRandomQuote } = require('./utils/quotes');
@@ -15,7 +16,6 @@ const {
     getEveningPerfectMessage,
     getEveningMissingMessage
 } = require('./utils/responses');
-const { issueWarning } = require('./commands/users');
 
 const TZ = process.env.TIMEZONE || 'Africa/Cairo';
 
@@ -265,6 +265,18 @@ class AutomationSystem {
 
     async lockTasksCron() {
         const toLock = this.db.getTasksToLock();
+        if (!toLock.length) return;
+
+        const autoWarningsOn = this.db.getAutoWarningsStatus ? this.db.getAutoWarningsStatus() : true;
+        const dailyLog = []; // for admin daily log
+
+        // Get guild members once
+        const guild = this.client.guilds.cache.first();
+        let guildMembers = guild?.members.cache;
+        if (guildMembers && guildMembers.size < 2) {
+            guildMembers = await guild.members.fetch({ time: 15000 }).catch(() => guild.members.cache);
+        }
+
         for (const t of toLock) {
             this.db.lockTask(t.id);
             console.log(`🔒 Task locked: #${t.id} ${t.title}`);
@@ -273,20 +285,57 @@ class AutomationSystem {
                 const allUsers = this.db.getAllUsers();
                 const completions = this.db.getTaskCompletions(t.id);
                 const completedUserIds = new Set(completions.map(c => c.user_id));
-                const missed = allUsers.filter(user => !completedUserIds.has(user.user_id));
                 const typeAr = t.type === 'weekly' ? 'الأسبوعية' : 'الشهرية';
+                const reasonType = t.type === 'weekly' ? 'weekly_task' : 'monthly_task';
+                const period = t.period || t.id.toString();
+
+                const missed = allUsers.filter(u => {
+                    if (completedUserIds.has(u.user_id)) return false;
+                    if (guildMembers) {
+                        const member = guildMembers.get(u.user_id);
+                        if (!member) return false;
+                        if (process.env.MEMBER_ROLE_ID && !member.roles.cache.has(process.env.MEMBER_ROLE_ID)) return false;
+                    }
+                    return true;
+                });
+
                 for (const user of missed) {
-                    const thread = await this.client.channels.fetch(user.thread_id).catch(() => null);
-                    if (thread) {
-                        await thread.send(
-                            `⏰ <@${user.user_id}> **انتهى وقت المهمة ${typeAr}:** "${t.title}"\nلم يتم تسجيل إتمامك لها. 📌`
-                        ).catch(() => {});
-                        await new Promise(r => setTimeout(r, 300));
+                    if (autoWarningsOn) {
+                        const result = await issueWarning(
+                            user.user_id,
+                            `لم يكمل المهمة ${typeAr}: "${t.title}"`,
+                            null,
+                            { db: this.db, client: this.client },
+                            reasonType,
+                            period
+                        );
+                        if (result && result > 0) {
+                            dailyLog.push({ name: user.name, userId: user.user_id, task: t.title, typeAr, warningCount: result });
+                        }
+                    }
+                    await new Promise(r => setTimeout(r, 300));
+                }
+
+                console.log(`✅ Task #${t.id} locked — ${missed.length} missed.`);
+            } catch (e) {
+                console.error(`❌ lockTasksCron error:`, e.message);
+            }
+        }
+
+        // Send admin daily log if any warnings issued
+        if (dailyLog.length > 0) {
+            try {
+                const adminChId = process.env.ADMIN_CHANNEL_ID;
+                if (adminChId) {
+                    const adminCh = await this.client.channels.fetch(adminChId).catch(() => null);
+                    if (adminCh) {
+                        const lines = dailyLog.map(l =>
+                            `• **${l.name}** <@${l.userId}> — مهمة "${l.task}" ${l.typeAr} | إنذار #${l.warningCount}` 
+                        ).join('\n');
+                        await adminCh.send(`📋 **تقرير إنذارات المهام:**\n${lines}`).catch(() => {});
                     }
                 }
-            } catch (e) {
-                console.error(`❌ lockTasksCron notify error:`, e.message);
-            }
+            } catch (_) {}
         }
     }
 
@@ -538,7 +587,9 @@ class AutomationSystem {
                         user.user_id,
                         `لم يكمل 5 من 7 تقارير أسبوعية (عمل ${count}/7)`,
                         null,
-                        { db: this.db, client: this.client }
+                        { db: this.db, client: this.client },
+                        'reports',
+                        `week_${startStr}` 
                     );
                     await new Promise(r => setTimeout(r, 300));
                 }
@@ -1036,23 +1087,22 @@ class AutomationSystem {
     }
 
     setupTaskReminderCron() {
-        // Hourly check for tasks expiring in 2-3.5 hours
+        // Hourly check for tasks expiring in ~24 hours
         this.jobs.push(cron.schedule('0 * * * *', async () => {
-            console.log(`⏰ [${new Date().toLocaleTimeString('ar-EG')}] Task reminder check...`);
+            console.log(`⏰ Task reminder check...`);
             try {
                 const now = Date.now();
-                const twoHoursFromNow = now + (2 * 60 * 60 * 1000);
-                const threeAndHalfHoursFromNow = now + (3.5 * 60 * 60 * 1000);
-                
+                const twentyThreeHours = now + (23 * 60 * 60 * 1000);
+                const twentyFiveHours = now + (25 * 60 * 60 * 1000);
+
                 const guildId = process.env.GUILD_ID || this.client.guilds.cache.first()?.id;
                 if (!guildId) return;
+
                 const weeklyTasks = this.db.getActiveTasks(guildId, 'weekly') || [];
                 const monthlyTasks = this.db.getActiveTasks(guildId, 'monthly') || [];
-                const tasks = [...weeklyTasks, ...monthlyTasks];
-                
-                const activeTasks = tasks.filter(task => {
+                const activeTasks = [...weeklyTasks, ...monthlyTasks].filter(task => {
                     const lockAt = new Date(task.lock_at).getTime();
-                    return lockAt >= twoHoursFromNow && lockAt <= threeAndHalfHoursFromNow;
+                    return lockAt >= twentyThreeHours && lockAt <= twentyFiveHours;
                 });
 
                 for (const task of activeTasks) {
@@ -1060,28 +1110,28 @@ class AutomationSystem {
                         const completions = this.db.getTaskCompletions(task.id);
                         const completedUserIds = new Set(completions.map(c => c.user_id));
                         const allUsers = this.db.getAllUsers();
-                        const usersToRemind = allUsers.filter(user => 
-                            user.thread_id && !completedUserIds.has(user.user_id)
-                        );
+                        const usersToRemind = allUsers.filter(u => !completedUserIds.has(u.user_id));
 
                         for (const user of usersToRemind) {
                             try {
-                                const thread = await this.client.channels.fetch(user.thread_id).catch(() => null);
-                                if (thread) {
-                                    await thread.send(
-                                        `⏰ **تذكير مهمة:** مهمة "${task.title}" هتقفل كمان حوالي 3 ساعات! لو خلصتها، متنساش تسجل إتمامك ليها. 💪`
-                                    );
-                                    await new Promise(r => setTimeout(r, 300));
+                                if (user.thread_id) {
+                                    const thread = await this.client.channels.fetch(user.thread_id).catch(() => null);
+                                    if (thread) {
+                                        await thread.send(
+                                            `⏰ **تذكير:** مهمة "${task.title}" هتقفل خلال 24 ساعة! لو خلصتها، متنساش تسجل إتمامك. 💪` 
+                                        ).catch(() => {});
+                                        await new Promise(r => setTimeout(r, 300));
+                                    }
                                 }
                             } catch (e) {
                                 console.error(`❌ Task reminder for ${user.name}:`, e.message);
                             }
                         }
                     } catch (e) {
-                        console.error(`❌ Task reminder processing for task ${task.id}:`, e.message);
+                        console.error(`❌ Task reminder for task ${task.id}:`, e.message);
                     }
                 }
-                console.log(`✅ Task reminders processed for ${activeTasks.length} tasks.`);
+                console.log(`✅ Task reminder check done — ${activeTasks.length} tasks reminded.`);
             } catch (e) {
                 console.error('❌ Task reminder cron failed:', e.message);
             }

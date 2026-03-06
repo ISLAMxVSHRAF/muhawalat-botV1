@@ -205,9 +205,19 @@ class MuhawalatDatabase {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT NOT NULL,
             reason TEXT,
+            reason_type TEXT DEFAULT 'manual',
+            period TEXT,
             issued_by TEXT,
             issued_at TEXT DEFAULT CURRENT_TIMESTAMP
         )`);
+
+        // Migration: add reason_type and period if not exist
+        try {
+            this.db.run(`ALTER TABLE warnings_log ADD COLUMN reason_type TEXT DEFAULT 'manual'`);
+        } catch (_) {}
+        try {
+            this.db.run(`ALTER TABLE warnings_log ADD COLUMN period TEXT`);
+        } catch (_) {}
 
         this.db.run(`CREATE TABLE IF NOT EXISTS reports (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1059,11 +1069,25 @@ class MuhawalatDatabase {
     // ==========================================
     // WARNINGS
     // ==========================================
-    addWarning(userId, reason, issuedBy) {
+    addWarning(userId, reason, issuedBy, reasonType = 'manual', period = null) {
         try {
+            // Prevent duplicate warning for same reason_type + period
+            if (reasonType !== 'manual' && period) {
+                const s = this.db.prepare(
+                    `SELECT id FROM warnings_log WHERE user_id = ? AND reason_type = ? AND period = ? LIMIT 1` 
+                );
+                s.bind([userId, reasonType, period]);
+                const exists = s.step();
+                s.free();
+                if (exists) {
+                    console.log(`⚠️ Duplicate warning skipped: ${userId} ${reasonType} ${period}`);
+                    return -2; // duplicate
+                }
+            }
+
             this.db.run(
-                `INSERT INTO warnings_log (user_id, reason, issued_by) VALUES (?,?,?)`,
-                [userId, reason || 'مخالفة الشروط', issuedBy || 'admin']
+                `INSERT INTO warnings_log (user_id, reason, reason_type, period, issued_by) VALUES (?,?,?,?,?)`,
+                [userId, reason || 'مخالفة الشروط', reasonType, period, issuedBy || 'system']
             );
             this.db.run(`
                 UPDATE users SET warning_count = warning_count + 1, last_warning_date = CURRENT_TIMESTAMP
