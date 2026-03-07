@@ -1161,9 +1161,14 @@ async function syncMembersExecute(interaction, { db, client }) {
         const guild = interaction.guild;
         // Fetch members with roles populated
         await guild.roles.fetch().catch(() => {});
-        let guildMembers = await guild.members.fetch({ time: 30000 }).catch(() => null);
-        if (!guildMembers || guildMembers.size === 0) {
+        let guildMembers;
+        try {
+            guildMembers = await guild.members.fetch();
+            console.log(`✅ members fetched: ${guildMembers.size}`);
+        } catch (e) {
+            console.error('❌ members fetch error:', e.message);
             guildMembers = guild.members.cache;
+            console.log(`⚠️ cache fallback: ${guildMembers.size}`);
         }
         if (!guildMembers || guildMembers.size === 0) {
             return interaction.editReply('❌ تعذر جلب أعضاء السيرفر. حاول مرة أخرى.');
