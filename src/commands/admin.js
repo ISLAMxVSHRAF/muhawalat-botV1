@@ -191,6 +191,11 @@ const data = new SlashCommandBuilder()
             )
             .addSubcommand(sub =>
                 sub
+                    .setName('tasks_overview')
+                    .setDescription('نظرة شاملة على المهام النشطة مع نسبة التسليم')
+            )
+            .addSubcommand(sub =>
+                sub
                     .setName('task_edit_deadline')
                     .setDescription('تعديل موعد انتهاء مهمة نشطة')
                     .addIntegerOption(o =>

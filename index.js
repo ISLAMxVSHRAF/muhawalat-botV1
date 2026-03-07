@@ -582,9 +582,11 @@ client.on('interactionCreate', async interaction => {
             }
 
             if (id === 'btn_refresh') {
-                await interaction.deferUpdate();
-                // ✅ BUG FIX: استخدم صاحب المساحة مش اللي ضغط الزرار
                 const threadOwner = db.getUserByThread(interaction.channel.id);
+                if (threadOwner && threadOwner.user_id !== interaction.user.id) {
+                    return interaction.reply({ content: '😤 بطل لعب يا نجم! دي مش مساحتك.', ephemeral: true });
+                }
+                await interaction.deferUpdate();
                 const ownerId = threadOwner?.user_id || interaction.user.id;
                 return updateDashboard(interaction.channel, ownerId, db);
             }

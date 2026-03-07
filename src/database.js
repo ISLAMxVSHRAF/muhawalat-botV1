@@ -1556,7 +1556,7 @@ class MuhawalatDatabase {
             `SELECT COUNT(*) as cnt FROM task_completions tc
              JOIN tasks t ON tc.task_id = t.id
              WHERE tc.user_id = ? AND t.type = ?
-             AND tc.completed_at >= ? AND tc.completed_at <= ?`
+             AND DATE(tc.completed_at) >= ? AND DATE(tc.completed_at) <= ?`
         );
         s.bind([userId, type, startDate, endDate]);
         const row = s.step() ? s.getAsObject() : { cnt: 0 };

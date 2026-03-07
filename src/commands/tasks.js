@@ -739,6 +739,66 @@ async function processTaskEditModals(interaction, { db }) {
 // Central handler for /admin tasks group
 // ==========================================
 
+async function tasksOverviewExecute(interaction, { db }) {
+    await interaction.deferReply({ ephemeral: true });
+    try {
+        const guildId = interaction.guild.id;
+        const weeklyTasks = db.getActiveTasks(guildId, 'weekly');
+        const monthlyTasks = db.getActiveTasks(guildId, 'monthly');
+        const all = [...weeklyTasks, ...monthlyTasks];
+
+        if (!all.length) {
+            return interaction.editReply('📭 لا توجد مهام نشطة حالياً.');
+        }
+
+        // Get active members count
+        let totalMembers = db.getAllUsers().length;
+        if (process.env.MEMBER_ROLE_ID) {
+            try {
+                let guildMembers = interaction.guild.members.cache;
+                if (guildMembers.size < 2) {
+                    guildMembers = await interaction.guild.members.fetch({ time: 10000 }).catch(() => interaction.guild.members.cache);
+                }
+                totalMembers = db.getAllUsers().filter(u => {
+                    const m = guildMembers.get(u.user_id);
+                    return m && m.roles.cache.has(process.env.MEMBER_ROLE_ID);
+                }).length;
+            } catch (_) {}
+        }
+
+        const formatTask = (t) => {
+            const typeEmoji = t.type === 'weekly' ? '📅' : '🗓️';
+            const lockTs = Math.floor(new Date(t.lock_at).getTime() / 1000);
+            const count = db.getTaskCompletionCount ? db.getTaskCompletionCount(t.id) : 0;
+            const pct = totalMembers > 0 ? Math.round((count / totalMembers) * 100) : 0;
+            const bar = pct >= 70 ? '🟢' : pct >= 40 ? '🟡' : '🔴';
+            return `${typeEmoji} **${t.title}**\n   ${bar} ${count}/${totalMembers} (${pct}%) | يقفل: <t:${lockTs}:R>`;
+        };
+
+        const weeklyVal = weeklyTasks.length > 0
+            ? weeklyTasks.map(formatTask).join('\n\n')
+            : '—';
+        const monthlyVal = monthlyTasks.length > 0
+            ? monthlyTasks.map(formatTask).join('\n\n')
+            : '—';
+
+        const embed = new EmbedBuilder()
+            .setColor(CONFIG.COLORS.primary)
+            .setTitle('🎯 نظرة شاملة على المهام')
+            .addFields(
+                { name: `📅 مهام أسبوعية (${weeklyTasks.length})`, value: weeklyVal, inline: false },
+                { name: `🗓️ مهام شهرية (${monthlyTasks.length})`, value: monthlyVal, inline: false }
+            )
+            .setFooter({ text: `إجمالي الأعضاء النشطين: ${totalMembers}` })
+            .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+    } catch (e) {
+        console.error('❌ tasks_overview:', e);
+        await interaction.editReply(ERR).catch(() => {});
+    }
+}
+
 async function handleTasks(interaction, deps) {
     const sub = interaction.options.getSubcommand();
     switch (sub) {
@@ -746,6 +806,8 @@ async function handleTasks(interaction, deps) {
             return taskCreateExecute(interaction, deps);
         case 'task_list':
             return taskListExecute(interaction, deps);
+        case 'tasks_overview':
+            return tasksOverviewExecute(interaction, deps);
         case 'task_link':
             return taskLinkExecute(interaction, deps);
         case 'task_edit_deadline':
@@ -812,6 +874,6 @@ module.exports = {
     processTaskEditDeadlineModal,
     taskDeleteExecute,
     taskEditExecute,
-    processTaskEditModals 
+    processTaskEditModals,
+    tasksOverviewExecute
 };
-
