@@ -103,11 +103,19 @@ client.once('clientReady', async () => {
     try {
         const guild = client.guilds.cache.first();
         if (guild) {
-            await guild.members.fetch();
-            console.log(`✅ Guild members cached: ${guild.members.cache.size}`);
+            console.log(`⏳ Fetching guild members...`);
+            const members = await Promise.race([
+                guild.members.fetch(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 20000))
+            ]);
+            console.log(`✅ Guild members cached: ${members.size}`);
+        } else {
+            console.warn('⚠️ No guild found in cache');
         }
     } catch (e) {
         console.warn('⚠️ Could not pre-fetch members:', e.message);
+        const guild = client.guilds.cache.first();
+        console.log(`⚠️ Cache fallback size: ${guild?.members.cache.size || 0}`);
     }
 
     console.log('='.repeat(50) + '\n');
