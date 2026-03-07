@@ -56,15 +56,15 @@ async function buildHomeSection(userId, db, guildId = null) {
         return `${yyyy}-${mm}-${dd}`;
     };
 
-    // Shifted Day: 22:00–23:59 = Today | 00:00–12:00 = Yesterday | 12:01–21:59 = ➖
+    // 22:00–23:59 → check today | 00:00–11:59 → check yesterday | 12:00–21:59 → ➖
     let dailyStatus = '➖';
-    if (hour >= 0 && hour < 12) {
+    if (hour >= 22) {
+        const report = db.getDailyReport ? db.getDailyReport(userId, formatDate(cairoDate)) : null;
+        dailyStatus = report ? '✅' : '❌';
+    } else if (hour < 12) {
         const yesterday = new Date(cairoDate);
         yesterday.setDate(yesterday.getDate() - 1);
         const report = db.getDailyReport ? db.getDailyReport(userId, formatDate(yesterday)) : null;
-        dailyStatus = report ? '✅' : '❌';
-    } else if (hour >= 22 && hour <= 23) {
-        const report = db.getDailyReport ? db.getDailyReport(userId, formatDate(cairoDate)) : null;
         dailyStatus = report ? '✅' : '❌';
     }
 
@@ -104,16 +104,24 @@ async function buildHomeSection(userId, db, guildId = null) {
             weeklyCount = db.getCompletedTasksInRange ? db.getCompletedTasksInRange(userId, 'weekly', seasonStartStr, seasonEndStr) : 0;
             weeklyTotal = 4;
 
-            // Check if task was done this specific week block
-            const currentWeekDone = db.getCompletedTasksInRange ? db.getCompletedTasksInRange(userId, 'weekly', blockStartStr, blockEndStr) : 0;
+            // Weekly status — only show ✅/❌ if there's an active weekly task right now
+            const activeWeeklyTasks = db.getActiveTasks ? db.getActiveTasks(guildId, 'weekly') : [];
+            if (activeWeeklyTasks.length > 0) {
+                const currentWeekDone = db.getCompletedTasksInRange ? db.getCompletedTasksInRange(userId, 'weekly', blockStartStr, blockEndStr) : 0;
+                weeklyStatus = currentWeekDone > 0 ? '✅' : '❌';
+            } else {
+                weeklyStatus = '➖';
+            }
 
-            // Show ✅ if they did it this week, OR if their total matches the current week progress
-            weeklyStatus = (currentWeekDone > 0 || weeklyCount >= (weekIndex + 1)) ? '✅' : '❌';
-
-            // Monthly [X/1] — عدد المهام الشهرية (الموسمية) في الموسم كله
-            monthlyCount = db.getCompletedTasksInRange ? db.getCompletedTasksInRange(userId, 'monthly', seasonStartStr, seasonEndStr) : 0;
-            monthlyTotal = 1;
-            monthlyStatus = monthlyCount >= monthlyTotal ? '✅' : '❌';
+            // Monthly status — only show ✅/❌ if there's an active monthly task right now
+            const activeMonthlyTasks = db.getActiveTasks ? db.getActiveTasks(guildId, 'monthly') : [];
+            if (activeMonthlyTasks.length > 0) {
+                monthlyCount = db.getCompletedTasksInRange ? db.getCompletedTasksInRange(userId, 'monthly', seasonStartStr, seasonEndStr) : 0;
+                monthlyTotal = 1;
+                monthlyStatus = monthlyCount >= monthlyTotal ? '✅' : '❌';
+            } else {
+                monthlyStatus = '➖';
+            }
         }
     }
 
