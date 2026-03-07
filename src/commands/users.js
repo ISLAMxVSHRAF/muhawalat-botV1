@@ -1174,8 +1174,13 @@ async function syncMembersExecute(interaction, { db, client }) {
         const noRole = [];
         const departed = [];
 
+        // Build a plain Map with string keys for reliable lookup
+        const memberMap = new Map();
+        guildMembers.forEach(m => memberMap.set(m.user.id, m));
+
         for (const u of allUsers) {
-            const member = guildMembers.get(u.user_id);
+            if (u.status === 'archived') continue; // skip already archived
+            const member = memberMap.get(String(u.user_id));
             if (!member) {
                 departed.push(u);
             } else if (process.env.MEMBER_ROLE_ID && !member.roles.cache.has(process.env.MEMBER_ROLE_ID)) {
