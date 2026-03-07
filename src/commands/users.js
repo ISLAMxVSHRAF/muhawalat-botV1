@@ -1159,9 +1159,15 @@ async function syncMembersExecute(interaction, { db, client }) {
     await interaction.deferReply({ ephemeral: true });
     try {
         const guild = interaction.guild;
-        let guildMembers = guild.members.cache;
-        if (guildMembers.size < 2) {
-            guildMembers = await guild.members.fetch({ time: 15000 }).catch(() => guild.members.cache);
+        let guildMembers;
+        try {
+            guildMembers = await guild.members.fetch();
+        } catch (e) {
+            console.error('❌ syncMembers fetch error:', e.message);
+            guildMembers = guild.members.cache;
+        }
+        if (!guildMembers || guildMembers.size === 0) {
+            return interaction.editReply('❌ تعذر جلب أعضاء السيرفر. حاول مرة أخرى.');
         }
 
         const allUsers = db.getAllUsers();
