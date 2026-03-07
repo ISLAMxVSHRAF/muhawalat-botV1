@@ -335,33 +335,48 @@ async function registerMembersExecute(interaction, { db }) {
 }
 
 // ==========================================
-// create_thread & recreate_dashboard (from old admin.js)
+// create_thread & refresh_dashboard (from old admin.js)
 // ==========================================
 
-async function recreateDashboardExecute(interaction, { db, client }) {
+async function refreshDashboardExecute(interaction, { db, client }) {
     try {
         await interaction.deferReply({ ephemeral: true });
-        const userOpt = interaction.options.getUser('user');
-        const userId = userOpt.id;
-        const user = db.getUser(userId);
-        if (!user) return interaction.editReply('❌ العضو غير مسجل في النظام.');
-        if (!user.thread_id)
-            return interaction.editReply(
-                '❌ العضو ليس لديه مساحة مسجلة. استخدم /create_thread لإنشاء واحدة.'
-            );
-        const thread = await client.channels
-            .fetch(user.thread_id)
-            .catch(() => null);
-        if (!thread)
-            return interaction.editReply(
-                '❌ المساحة المسجلة غير موجودة. استخدم /create_thread لإنشاء مساحة جديدة.'
-            );
-        await updateDashboard(thread, userId, db);
+        
+        const allUsers = db.getAllUsers();
+        const activeUsers = allUsers.filter(u => u.status !== 'archived' && u.thread_id);
+        
+        if (activeUsers.length === 0) {
+            return interaction.editReply('❌ لا توجد مساحات نشطة لتحديثها.');
+        }
+        
+        let refreshed = 0;
+        let failed = 0;
+        
+        for (const user of activeUsers) {
+            try {
+                const thread = await client.channels
+                    .fetch(user.thread_id)
+                    .catch(() => null);
+                if (thread) {
+                    await updateDashboard(thread, user.user_id, db);
+                    refreshed++;
+                } else {
+                    failed++;
+                }
+            } catch (e) {
+                console.error(`❌ Failed to refresh dashboard for ${user.name}:`, e.message);
+                failed++;
+            }
+        }
+        
         await interaction.editReply(
-            `✅ **تم إعادة إنشاء الداشبورد لـ** ${userOpt.username}\n\nالمساحة: <#${user.thread_id}>`
+            `✅ **تم تحديث الداشبوردات:**\n` +
+            `🔄 ناجح: ${refreshed} مساحة\n` +
+            `❌ فشل: ${failed} مساحة\n` +
+            `📊 الإجمالي: ${activeUsers.length} مساحة نشطة`
         );
     } catch (e) {
-        console.error('❌ recreate_dashboard:', e);
+        console.error('❌ refresh_dashboard:', e);
         await interaction.editReply(ERR).catch(() => {});
     }
 }
@@ -483,8 +498,8 @@ async function handleSystem(interaction, deps) {
             return registerMembersExecute(interaction, deps);
         case 'create_thread':
             return createThreadExecute(interaction, deps);
-        case 'recreate_dashboard':
-            return recreateDashboardExecute(interaction, deps);
+        case 'refresh_dashboard':
+            return refreshDashboardExecute(interaction, deps);
         case 'db_backup':
             return dbBackupExecute(interaction, deps);
         case 'debug_status':

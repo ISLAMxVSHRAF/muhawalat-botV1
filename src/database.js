@@ -971,7 +971,7 @@ class MuhawalatDatabase {
 
     getDailyReport(userId, postDate) {
         const s = this.db.prepare(
-            `SELECT * FROM daily_reports WHERE user_id = ? AND report_date = ?`
+            `SELECT * FROM reports WHERE user_id = ? AND type = 'daily' AND report_date = ?` 
         );
         s.bind([userId, postDate]);
         const r = s.step() ? s.getAsObject() : null;
@@ -981,7 +981,7 @@ class MuhawalatDatabase {
 
     hasDailyReport(userId, postDate) {
         const s = this.db.prepare(
-            `SELECT id FROM daily_reports WHERE user_id = ? AND report_date = ?`
+            `SELECT id FROM reports WHERE user_id = ? AND type = 'daily' AND report_date = ?` 
         );
         s.bind([userId, postDate]);
         const has = s.step();

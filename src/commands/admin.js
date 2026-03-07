@@ -531,14 +531,8 @@ const data = new SlashCommandBuilder()
             )
             .addSubcommand(sub =>
                 sub
-                    .setName('recreate_dashboard')
-                    .setDescription('إعادة بناء الداشبورد لعضو')
-                    .addUserOption(o =>
-                        o
-                            .setName('user')
-                            .setDescription('العضو')
-                            .setRequired(true)
-                    )
+                    .setName('refresh_dashboard')
+                    .setDescription('تحديث داشبورد جميع الأعضاء النشطين')
             )
             .addSubcommand(sub =>
                 sub
