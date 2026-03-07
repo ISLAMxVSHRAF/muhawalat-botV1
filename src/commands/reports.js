@@ -170,6 +170,64 @@ async function dailyMissingExecute(interaction, { db }) {
     }
 }
 
+async function dailyOverviewExecute(interaction, { db }) {
+    try {
+        await interaction.deferReply({ ephemeral: true });
+        const dateInput = interaction.options.getString('date');
+        const targetDate = dateInput ? parseDateDaily(dateInput) : getTodayDate();
+        if (dateInput && !targetDate)
+            return interaction.editReply('❌ صيغة التاريخ غلط! استخدم: `22/02/2026`');
+
+        const allUsers = db.getAllUsers();
+
+        // Filter active members by MEMBER_ROLE if set
+        let activeUsers = allUsers;
+        if (process.env.MEMBER_ROLE_ID) {
+            try {
+                let guildMembers = interaction.guild.members.cache;
+                if (guildMembers.size < 2) {
+                    guildMembers = await interaction.guild.members.fetch({ time: 10000 }).catch(() => interaction.guild.members.cache);
+                }
+                activeUsers = allUsers.filter(u => {
+                    const m = guildMembers.get(u.user_id);
+                    return m && m.roles.cache.has(process.env.MEMBER_ROLE_ID);
+                });
+            } catch (_) {}
+        }
+
+        const reports = db.getDailyReports(targetDate);
+        const doneIds = new Set(reports.map(r => r.user_id));
+        const done = activeUsers.filter(u => doneIds.has(u.user_id));
+        const missing = activeUsers.filter(u => !doneIds.has(u.user_id));
+        const pct = activeUsers.length > 0 ? Math.round((done.length / activeUsers.length) * 100) : 0;
+
+        const isToday = targetDate === getTodayDate();
+        const dateLabel = formatDate(targetDate);
+
+        const doneVal = done.length > 0
+            ? done.slice(0, 30).map(u => `<@${u.user_id}>`).join('\n')
+            : '—';
+        const missingVal = missing.length > 0
+            ? missing.slice(0, 30).map(u => `<@${u.user_id}>`).join('\n')
+            : '✅ الكل عمل تقريره!';
+
+        const embed = new EmbedBuilder()
+            .setColor(pct >= 70 ? CONFIG.COLORS.success : pct >= 40 ? CONFIG.COLORS.warning : CONFIG.COLORS.danger)
+            .setTitle(isToday ? '📊 نظرة شاملة — تقارير اليوم' : `📊 نظرة شاملة — ${dateLabel}`)
+            .setDescription(`**${done.length}** من **${activeUsers.length}** عضو — نسبة الالتزام: **${pct}%**`)
+            .addFields(
+                { name: `✅ عملوا تقريرهم (${done.length})`, value: doneVal, inline: true },
+                { name: `❌ لم يعملوا بعد (${missing.length})`, value: missingVal, inline: true }
+            )
+            .setFooter({ text: dateLabel });
+
+        await interaction.editReply({ embeds: [embed] });
+    } catch (e) {
+        console.error('❌ daily_overview:', e);
+        await interaction.editReply(ERR).catch(() => {});
+    }
+}
+
 // ==========================================
 // 🔘 HANDLE BUTTONS (from dailyReport.js)
 // ==========================================
@@ -420,6 +478,8 @@ async function handleReports(interaction, deps) {
             return dailyDoneExecute(interaction, deps);
         case 'daily_missing':
             return dailyMissingExecute(interaction, deps);
+        case 'daily_overview':
+            return dailyOverviewExecute(interaction, deps);
         case 'sync_reports':
             return syncReportsExecute(interaction, deps);
         case 'unsync_reports':
@@ -431,6 +491,7 @@ async function handleReports(interaction, deps) {
 
 module.exports = {
     handleReports,
-    handleDailyReportButton
+    handleDailyReportButton,
+    dailyOverviewExecute
 };
 

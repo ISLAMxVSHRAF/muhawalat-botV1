@@ -46,6 +46,17 @@ const data = new SlashCommandBuilder()
             )
             .addSubcommand(sub =>
                 sub
+                    .setName('daily_overview')
+                    .setDescription('نظرة شاملة على التقارير اليومية (من عمل + من لم يعمل)')
+                    .addStringOption(o =>
+                        o
+                            .setName('date')
+                            .setDescription('التاريخ — مثال: 22/02/2026 (افتراضي: اليوم)')
+                            .setRequired(false)
+                    )
+            )
+            .addSubcommand(sub =>
+                sub
                     .setName('sync_reports')
                     .setDescription('مزامنة التقارير اليومية من Thread')
                     .addStringOption(o =>
