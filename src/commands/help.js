@@ -65,8 +65,8 @@ const HELP_SECTIONS = {
         commands: [
             { name: '/admin system setup', desc: 'إعداد نظام محاولات للمرة الأولى', usage: '—' },
             { name: '/admin system create_thread', desc: 'إنشاء مساحة شخصية لعضو', usage: 'user:' },
-            { name: '/admin system recreate_dashboard', desc: 'إعادة بناء داشبورد عضو', usage: 'user:' },
-            { name: '/admin system db_backup', desc: 'نسخة احتياطية من الداتابيز', usage: '—' },
+        { name: '/admin system refresh_dashboard', desc: 'تحديث داشبورد جميع الأعضاء النشطين', usage: '—' },
+        { name: '/admin system db_backup', desc: 'نسخة احتياطية من الداتابيز', usage: '—' },
             { name: '/admin system debug_status', desc: 'حالة النظام والأتمتة', usage: '—' },
         ]
     },
