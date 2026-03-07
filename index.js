@@ -98,7 +98,27 @@ client.once('clientReady', async () => {
 
     console.log(`✅ Bot: ${client.user.tag}`);
     console.log(`📊 Users: ${db.getAllUsers().length}`);
+
+    // Pre-fetch all guild members to keep cache warm
+    try {
+        const guild = client.guilds.cache.first();
+        if (guild) {
+            await guild.members.fetch();
+            console.log(`✅ Guild members cached: ${guild.members.cache.size}`);
+        }
+    } catch (e) {
+        console.warn('⚠️ Could not pre-fetch members:', e.message);
+    }
+
     console.log('='.repeat(50) + '\n');
+});
+
+// Keep member cache fresh
+client.on('guildMemberAdd', member => {
+    console.log(`➕ Member joined: ${member.user.tag}`);
+});
+client.on('guildMemberRemove', member => {
+    console.log(`➖ Member left: ${member.user.tag}`);
 });
 
 // ==========================================

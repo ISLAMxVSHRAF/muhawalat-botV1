@@ -1159,16 +1159,16 @@ async function syncMembersExecute(interaction, { db, client }) {
     await interaction.deferReply({ ephemeral: true });
     try {
         const guild = interaction.guild;
-        // Fetch members with roles populated
-        await guild.roles.fetch().catch(() => {});
-        let guildMembers;
-        try {
-            guildMembers = await guild.members.fetch();
-            console.log(`✅ members fetched: ${guildMembers.size}`);
-        } catch (e) {
-            console.error('❌ members fetch error:', e.message);
-            guildMembers = guild.members.cache;
-            console.log(`⚠️ cache fallback: ${guildMembers.size}`);
+        // Use cached members (pre-fetched on startup)
+        let guildMembers = guild.members.cache;
+        // If cache seems empty, try fetching again
+        if (guildMembers.size < 10) {
+            try {
+                guildMembers = await guild.members.fetch();
+                console.log(`✅ members re-fetched: ${guildMembers.size}`);
+            } catch (e) {
+                console.warn('⚠️ members fetch failed, using cache:', e.message);
+            }
         }
         if (!guildMembers || guildMembers.size === 0) {
             return interaction.editReply('❌ تعذر جلب أعضاء السيرفر. حاول مرة أخرى.');
