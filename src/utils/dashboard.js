@@ -510,29 +510,48 @@ async function processJournalModal(interaction, db) {
 async function showJournalLog(interaction, db) {
     try {
         await interaction.deferReply({ ephemeral: true });
-        const journals = db.getUserJournals ? db.getUserJournals(interaction.user.id, 25) : [];
+        const journals = db.getUserJournals ? db.getUserJournals(interaction.user.id, 50) : [];
         if (!journals.length) return interaction.editReply({ content: '🗂️ لا توجد تدوينات بعد. استخدم **📝 تدوين** لكتابة أول تدوينة.', ephemeral: true });
 
         const perPage = 5;
+        const totalPages = Math.ceil(journals.length / perPage);
         const separator = '\n━━━━━━━━━━━━━━\n';
-        const pages = [];
-        for (let i = 0; i < journals.length; i += perPage) {
-            const slice = journals.slice(i, i + perPage);
-            const maxEntryLen = 700;
+
+        function buildPage(pageIndex) {
+            const slice = journals.slice(pageIndex * perPage, (pageIndex + 1) * perPage);
+            const maxEntryLen = 600;
             const desc = slice.map(j => {
-                const date = j.created_at ? new Date(j.created_at).toLocaleDateString('ar-EG', { dateStyle: 'medium' }) : '—';
+                const date = j.created_at
+                    ? new Date(j.created_at).toLocaleDateString('ar-EG', { dateStyle: 'medium' })
+                    : '—';
                 let content = (j.content || '').trim();
                 if (content.length > maxEntryLen) content = content.slice(0, maxEntryLen) + '…';
                 return `**📅 ${date}**\n${content}`;
             }).join(separator);
+
             const embed = new EmbedBuilder()
                 .setColor(CONFIG.COLORS?.primary || 0x2ecc71)
                 .setTitle('🗂️ سجل التدوين')
                 .setDescription(desc)
-                .setFooter({ text: `صفحة ${Math.floor(i / perPage) + 1} من ${Math.ceil(journals.length / perPage)}` });
-            pages.push(embed);
+                .setFooter({ text: `صفحة ${pageIndex + 1} من ${totalPages} • إجمالي التدوينات: ${journals.length}` });
+
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`journal_page_${pageIndex - 1}`)
+                    .setLabel('◀️ السابق')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setDisabled(pageIndex === 0),
+                new ButtonBuilder()
+                    .setCustomId(`journal_page_${pageIndex + 1}`)
+                    .setLabel('التالي ▶️')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setDisabled(pageIndex >= totalPages - 1)
+            );
+
+            return { embeds: [embed], components: [row] };
         }
-        await interaction.editReply({ embeds: pages.slice(0, 1), ephemeral: true });
+
+        await interaction.editReply(buildPage(0));
     } catch (e) {
         console.error('❌ showJournalLog:', e.message);
         await interaction.reply({ content: '❌ حدث خطأ.', ephemeral: true }).catch(() => {});

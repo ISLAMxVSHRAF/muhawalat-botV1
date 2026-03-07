@@ -426,11 +426,15 @@ class AutomationSystem {
         }
 
         const users = this.db.getAllUsers();
-        const today = new Date();
-        const twoWeeksAgo = new Date(today);
-        twoWeeksAgo.setDate(today.getDate() - 14);
-        const startStr = twoWeeksAgo.toISOString().split('T')[0];
-        const endStr = today.toISOString().split('T')[0];
+
+        // Use Cairo timezone for date calculation
+        const cairoNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Cairo' }));
+        const twoWeeksAgo = new Date(cairoNow);
+        twoWeeksAgo.setDate(cairoNow.getDate() - 14);
+
+        const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        const startStr = fmt(twoWeeksAgo);
+        const endStr   = fmt(cairoNow);
 
         for (const user of users) {
             if ((user.warning_count || 0) === 0) continue;
@@ -443,15 +447,37 @@ class AutomationSystem {
 
             if (avgDaily >= 5 / 7 && allWeeklyDone) {
                 this.db.removeWarning(user.user_id);
+
+                // Notify member in their thread
                 try {
-                    const thread = await this.client.channels.fetch(user.thread_id).catch(() => null);
-                    if (thread) {
-                        await thread.send(
-                            `✅ <@${user.user_id}> تم رفع إنذار عنك تلقائياً!\nأثبت التزامك على مدار أسبوعين متتاليين 💪`
-                        );
-                        await new Promise(r => setTimeout(r, 300));
+                    if (user.thread_id) {
+                        const thread = await this.client.channels.fetch(user.thread_id).catch(() => null);
+                        if (thread) {
+                            await thread.send(
+                                `✅ <@${user.user_id}> تم رفع إنذار عنك تلقائياً!\nأثبت التزامك على مدار أسبوعين متتاليين 💪` 
+                            ).catch(() => {});
+                        } else {
+                            // DM fallback
+                            const discordUser = await this.client.users.fetch(user.user_id).catch(() => null);
+                            if (discordUser) await discordUser.send(`✅ تم رفع إنذار عنك تلقائياً! أثبت التزامك 💪`).catch(() => {});
+                        }
                     }
                 } catch (_) {}
+
+                // Notify admin channel
+                try {
+                    const adminChId = process.env.ADMIN_CHANNEL_ID;
+                    if (adminChId) {
+                        const adminCh = await this.client.channels.fetch(adminChId).catch(() => null);
+                        if (adminCh) {
+                            await adminCh.send(
+                                `✅ **رُفع إنذار تلقائياً**\nالعضو: **${user.name}** <@${user.user_id}>\nالسبب: التزم بـ 5/7 تقارير + المهام الأسبوعية لأسبوعين متتاليين.` 
+                            ).catch(() => {});
+                        }
+                    }
+                } catch (_) {}
+
+                await new Promise(r => setTimeout(r, 300));
             }
         }
     }

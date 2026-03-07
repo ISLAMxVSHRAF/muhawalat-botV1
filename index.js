@@ -590,6 +590,47 @@ client.on('interactionCreate', async interaction => {
                 const ownerId = threadOwner?.user_id || interaction.user.id;
                 return updateDashboard(interaction.channel, ownerId, db);
             }
+
+            if (id.startsWith('journal_page_')) {
+                const pageIndex = parseInt(id.replace('journal_page_', ''));
+                const journals = db.getUserJournals ? db.getUserJournals(interaction.user.id, 50) : [];
+                if (!journals.length) return interaction.update({ content: '🗂️ لا توجد تدوينات.', embeds: [], components: [] });
+
+                const perPage = 5;
+                const totalPages = Math.ceil(journals.length / perPage);
+                const separator = '\n━━━━━━━━━━━━━━\n';
+                const slice = journals.slice(pageIndex * perPage, (pageIndex + 1) * perPage);
+                const maxEntryLen = 600;
+                const desc = slice.map(j => {
+                    const date = j.created_at
+                        ? new Date(j.created_at).toLocaleDateString('ar-EG', { dateStyle: 'medium' })
+                        : '—';
+                    let content = (j.content || '').trim();
+                    if (content.length > maxEntryLen) content = content.slice(0, maxEntryLen) + '…';
+                    return `**📅 ${date}**\n${content}`;
+                }).join(separator);
+
+                const embed = new EmbedBuilder()
+                    .setColor(CONFIG.COLORS?.primary || 0x2ecc71)
+                    .setTitle('🗂️ سجل التدوين')
+                    .setDescription(desc)
+                    .setFooter({ text: `صفحة ${pageIndex + 1} من ${totalPages} • إجمالي التدوينات: ${journals.length}` });
+
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`journal_page_${pageIndex - 1}`)
+                        .setLabel('◀️ السابق')
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(pageIndex === 0),
+                    new ButtonBuilder()
+                        .setCustomId(`journal_page_${pageIndex + 1}`)
+                        .setLabel('التالي ▶️')
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(pageIndex >= totalPages - 1)
+                );
+
+                return interaction.update({ embeds: [embed], components: [row] });
+            }
         }
         else if (interaction.isStringSelectMenu()) {
             if (interaction.customId === 'del_menu') return processDeleteHabit(interaction, db);
