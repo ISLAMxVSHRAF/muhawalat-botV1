@@ -1159,6 +1159,8 @@ async function syncMembersExecute(interaction, { db, client }) {
     await interaction.deferReply({ ephemeral: true });
     try {
         const guild = interaction.guild;
+        // Fetch members with roles populated
+        await guild.roles.fetch().catch(() => {});
         let guildMembers = await guild.members.fetch({ time: 30000 }).catch(() => null);
         if (!guildMembers || guildMembers.size === 0) {
             guildMembers = guild.members.cache;
