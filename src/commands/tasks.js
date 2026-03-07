@@ -163,41 +163,47 @@ const taskListData = new SlashCommandBuilder()
 async function taskListExecute(interaction, { db }) {
     await interaction.deferReply({ ephemeral: true });
     try {
-        const weeklyTasks = db.getActiveTasks(interaction.guild.id, 'weekly');
-        const monthlyTasks = db.getActiveTasks(interaction.guild.id, 'monthly');
-        const all = [...weeklyTasks, ...monthlyTasks];
+        const guildId = interaction.guild.id;
+        const weeklyTasks = db.getActiveTasks(guildId, 'weekly') || [];
+        const monthlyTasks = db.getActiveTasks(guildId, 'monthly') || [];
+        const activeTasks = [...weeklyTasks, ...monthlyTasks];
 
-        if (!all.length) {
-            return interaction.editReply('📭 لا توجد مهام نشطة حالياً.');
-        }
+        // Get last 5 locked tasks
+        let lockedTasks = [];
+        try {
+            const s = db.db.prepare(
+                `SELECT * FROM tasks WHERE guild_id = ? AND is_locked = 1 ORDER BY lock_at DESC LIMIT 5` 
+            );
+            s.bind([guildId]);
+            while (s.step()) lockedTasks.push(s.getAsObject());
+            s.free();
+        } catch (_) {}
 
-        const list = all.map(t => {
+        const formatTask = (t, locked = false) => {
             const typeEmoji = t.type === 'weekly' ? '📅' : '🗓️';
             const lockTs = Math.floor(new Date(t.lock_at).getTime() / 1000);
-            return `${typeEmoji} **#${t.id}** ${t.title}\n   يقفل: <t:${lockTs}:R>`;
-        }).join('\n\n');
+            const status = locked ? '🔒' : '🟢';
+            return `${status} ${typeEmoji} **#${t.id}** ${t.title}\n   ${locked ? 'أُقفلت' : 'يقفل'}: <t:${lockTs}:R>`;
+        };
+
+        let desc = '';
+        if (activeTasks.length) {
+            desc += '**🟢 نشطة:**\n' + activeTasks.map(t => formatTask(t, false)).join('\n\n');
+        } else {
+            desc += '� لا توجد مهام نشطة حالياً.';
+        }
+        if (lockedTasks.length) {
+            desc += '\n\n**🔒 آخر مهام مقفولة:**\n' + lockedTasks.map(t => formatTask(t, true)).join('\n\n');
+        }
 
         const embed = new EmbedBuilder()
             .setColor(CONFIG.COLORS.primary)
-            .setTitle('📌 المهام النشطة')
-            .setDescription(list)
+            .setTitle('📌 قائمة المهام')
+            .setDescription(desc)
+            .setFooter({ text: 'استخدم task_id في أوامر task_edit_deadline و task_delete' })
             .setTimestamp();
 
-        // Create dropdown menu for task selection
-        const selectMenu = new StringSelectMenuBuilder()
-            .setCustomId('select_manage_task')
-            .setPlaceholder('اختر مهمة لإدارتها...')
-            .addOptions(
-                all.map(t => ({
-                    label: t.title.length > 100 ? t.title.substring(0, 100) + '...' : t.title,
-                    value: t.id.toString(),
-                    description: `${t.type === 'weekly' ? 'أسبوعية' : 'شهرية'} - ID: ${t.id}`
-                }))
-            );
-
-        const row = new ActionRowBuilder().addComponents(selectMenu);
-
-        await interaction.editReply({ embeds: [embed], components: [row] });
+        await interaction.editReply({ embeds: [embed] });
     } catch (e) {
         console.error('❌ task_list:', e);
         await interaction.editReply(ERR).catch(() => {});
@@ -482,256 +488,24 @@ async function taskDeleteExecute(interaction, { db }) {
     try {
         await interaction.deferReply({ ephemeral: true });
         const taskId = interaction.options.getInteger('task_id');
+        const confirmed = interaction.options.getBoolean('confirm');
         const task = db.getTask(taskId);
-        if (!task) return interaction.editReply('❌ المهمة غير موجودة.');
-
-        const { createConfirmation } = require('../utils/embeds');
-        const confirmed = await createConfirmation(interaction, {
-            title: '🗑️ حذف مهمة',
-            description: `سيتم حذف **${task.title}** (${task.type === 'weekly' ? 'أسبوعية' : 'شهرية'}) نهائياً.\n⚠️ كل تسجيلات الأعضاء فيها ستتحذف.`,
-        });
-        if (!confirmed) return;
-
+        if (!task) return interaction.editReply('❌ المهمة غير موجودة. استخدم task_list لمعرفة الـ IDs.');
+        if (!confirmed) {
+            const lockTs = Math.floor(new Date(task.lock_at).getTime() / 1000);
+            const typeAr = task.type === 'weekly' ? 'أسبوعية' : 'شهرية';
+            return interaction.editReply(
+                `⚠️ **تأكيد الحذف:**\n**${task.title}** (${typeAr}) — يقفل <t:${lockTs}:R>\n\n` +
+                `لتأكيد الحذف: \`/admin tasks task_delete task_id:${taskId} confirm:true\`\n` +
+                `⚠️ كل تسجيلات الأعضاء فيها ستُحذف.` 
+            );
+        }
         db.safeBackup('before-delete-task');
         db.deleteTask(taskId);
         await interaction.editReply(`✅ تم حذف المهمة **${task.title}** بنجاح.`);
     } catch (e) {
         console.error('❌ task_delete:', e);
-        await interaction.editReply('❌ حدث خطأ.').catch(() => {});
-    }
-}
-
-// ==========================================
-// Interactive Task Management Handlers (Fixed)
-// ==========================================
-
-// ذاكرة مؤقتة لحفظ رقم المهمة اللي الأدمن بيعدل عليها
-const _activeTaskManagement = new Map();
-
-async function handleTaskSelectMenu(interaction, deps) {
-    const db = deps.db;
-    try {
-        const taskId = parseInt(interaction.values[0], 10);
-        const task = db.getTask(taskId);
-        
-        if (!task) {
-            return interaction.update({ content: '❌ المهمة المحددة غير موجودة.', embeds: [], components: [] });
-        }
-
-        // حفظ رقم المهمة في الذاكرة باسم الأدمن
-        _activeTaskManagement.set(interaction.user.id, taskId);
-
-        const lockTs = Math.floor(new Date(task.lock_at).getTime() / 1000);
-        const typeEmoji = task.type === 'weekly' ? '📅' : '🗓️';
-        const typeText = task.type === 'weekly' ? 'أسبوعية' : 'شهرية';
-        const safeDescription = task.description || 'لا يوجد وصف';
-        
-        const taskEmbed = new EmbedBuilder()
-            .setColor(CONFIG.COLORS.primary)
-            .setTitle(`${typeEmoji} تفاصيل المهمة #${task.id}`)
-            .setDescription(`**${task.title}**`)
-            .addFields(
-                { name: '📋 الوصف', value: safeDescription.length > 500 ? safeDescription.substring(0, 500) + '...' : safeDescription, inline: false },
-                { name: '🏷️ النوع', value: typeText, inline: true },
-                { name: '⏰ الموعد', value: `<t:${lockTs}:R>`, inline: true },
-                { name: '🔗 الثريد', value: `<#${task.thread_id}>`, inline: true }
-            )
-            .setTimestamp();
-
-        // استخدام IDs ثابتة عشان الـ Router ميضربش
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId('btn_task_edit_static')
-                .setLabel('✏️ تعديل الموعد')
-                .setStyle(ButtonStyle.Primary),
-            new ButtonBuilder()
-                .setCustomId('btn_task_delete_static')
-                .setLabel('🗑️ حذف المهمة')
-                .setStyle(ButtonStyle.Danger)
-        );
-
-        await interaction.update({ embeds: [taskEmbed], components: [row] });
-    } catch (e) {
-        console.error('❌ handleTaskSelectMenu:', e);
-        await interaction.update({ content: ERR, embeds: [], components: [] }).catch(() => {});
-    }
-}
-
-async function handleTaskButtons(interaction, deps) {
-    const db = deps.db;
-    try {
-        // ── task_edit buttons ──
-        if (interaction.customId.startsWith('btn_task_edit_info_')) {
-            const taskId = parseInt(interaction.customId.replace('btn_task_edit_info_', ''));
-            const task = db.getTask ? db.getTask(taskId) : null;
-            if (!task) return interaction.reply({ content: '❌ المهمة غير موجودة.', ephemeral: true });
-
-            const modal = new ModalBuilder()
-                .setCustomId(`modal_task_edit_info_${taskId}`)
-                .setTitle(`✏️ تعديل معلومات المهمة #${taskId}`)
-                .addComponents(
-                    new ActionRowBuilder().addComponents(
-                        new TextInputBuilder()
-                            .setCustomId('title')
-                            .setLabel('العنوان')
-                            .setStyle(TextInputStyle.Short)
-                            .setValue(task.title || '')
-                            .setRequired(true)
-                    ),
-                    new ActionRowBuilder().addComponents(
-                        new TextInputBuilder()
-                            .setCustomId('task_order')
-                            .setLabel('الترتيب (رقم)')
-                            .setStyle(TextInputStyle.Short)
-                            .setValue(String(task.task_order || ''))
-                            .setRequired(false)
-                    )
-                );
-            return interaction.showModal(modal);
-        }
-
-        if (interaction.customId.startsWith('btn_task_edit_dl_')) {
-            const taskId = parseInt(interaction.customId.replace('btn_task_edit_dl_', ''));
-            const modal = new ModalBuilder()
-                .setCustomId(`modal_task_edit_dl_${taskId}`)
-                .setTitle(`📅 تعديل الديدلاين #${taskId}`)
-                .addComponents(
-                    new ActionRowBuilder().addComponents(
-                        new TextInputBuilder()
-                            .setCustomId('end_date')
-                            .setLabel('تاريخ الانتهاء (DD-MM-YYYY)')
-                            .setStyle(TextInputStyle.Short)
-                            .setPlaceholder('DD-MM-YYYY')
-                            .setRequired(true)
-                    ),
-                    new ActionRowBuilder().addComponents(
-                        new TextInputBuilder()
-                            .setCustomId('end_time')
-                            .setLabel('ساعة الانتهاء (HH:mm)')
-                            .setStyle(TextInputStyle.Short)
-                            .setPlaceholder('22:00')
-                            .setRequired(true)
-                    )
-                );
-            return interaction.showModal(modal);
-        }
-
-        if (interaction.customId.startsWith('btn_task_delete_')) {
-            const taskId = parseInt(interaction.customId.replace('btn_task_delete_', ''));
-            const task = db.getTask ? db.getTask(taskId) : null;
-            if (!task) return interaction.update({ content: '❌ المهمة غير موجودة.', embeds: [], components: [] });
-            db.safeBackup('before-delete-task');
-            db.deleteTask(taskId);
-            return interaction.update({ content: `✅ تم حذف المهمة **${task.title}** بنجاح.`, embeds: [], components: [] });
-        }
-
-        // استرجاع رقم المهمة من الذاكرة
-        const taskId = _activeTaskManagement.get(interaction.user.id);
-        
-        if (!taskId || !db.getTask(taskId)) {
-            return interaction.reply({ content: '❌ انتهت الجلسة أو المهمة اتحذفت. اختر المهمة من القائمة مرة تانية.', ephemeral: true });
-        }
-        
-        if (interaction.customId === 'btn_task_delete_static') {
-            const task = db.getTask(taskId);
-            const { createConfirmation } = require('../utils/embeds');
-            await interaction.deferUpdate();
-            const confirmed = await createConfirmation(interaction, {
-                title: '🗑️ حذف المهمة',
-                description: `سيتم حذف مهمة **${task?.title || '#' + taskId}** نهائياً.\n\nتسجيلات الأعضاء فيها **ستُحذف هي الأخرى**.`,
-            });
-            if (!confirmed) return;
-            db.safeBackup('before-delete-task');
-            db.deleteTask(taskId);
-            _activeTaskManagement.delete(interaction.user.id);
-            await interaction.editReply({ content: '✅ تم حذف المهمة بنجاح.', embeds: [], components: [] });
-        }
-        
-        if (interaction.customId === 'btn_task_edit_static') {
-            const modal = new ModalBuilder()
-                .setCustomId('modal_task_edit_static')
-                .setTitle('تعديل موعد المهمة')
-                .addComponents(
-                    new ActionRowBuilder().addComponents(
-                        new TextInputBuilder()
-                            .setCustomId('end_date')
-                            .setLabel('تاريخ الانتهاء (DD-MM-YYYY)')
-                            .setStyle(TextInputStyle.Short)
-                            .setPlaceholder('DD-MM-YYYY')
-                            .setRequired(true)
-                    ),
-                    new ActionRowBuilder().addComponents(
-                        new TextInputBuilder()
-                            .setCustomId('end_time')
-                            .setLabel('ساعة الانتهاء (HH:mm)')
-                            .setStyle(TextInputStyle.Short)
-                            .setPlaceholder('HH:mm')
-                            .setRequired(true)
-                    )
-                );
-
-            await interaction.showModal(modal);
-        }
-    } catch (e) {
-        console.error('❌ handleTaskButtons:', e);
-        await interaction.update({ content: ERR, embeds: [], components: [] }).catch(() => {});
-    }
-}
-
-async function processTaskEditDeadlineModal(interaction, deps) {
-    const db = deps.db;
-    try {
-        const taskId = _activeTaskManagement.get(interaction.user.id);
-        if (!taskId) {
-            return interaction.reply({ content: '❌ انتهت الجلسة. يرجى إعادة اختيار المهمة.', ephemeral: true });
-        }
-        
-        const endDate = interaction.fields.getTextInputValue('end_date').trim();
-        const endTime = interaction.fields.getTextInputValue('end_time').trim();
-        
-        const lockAt = parseDateTime(endDate, endTime);
-        if (!lockAt) {
-            return interaction.reply({ content: '❌ صيغة التاريخ أو الوقت غير صحيحة. استخدم: DD-MM-YYYY و HH:mm', ephemeral: true });
-        }
-        
-        db.updateTask(taskId, { lock_at: lockAt.toISOString() });
-        _activeTaskManagement.delete(interaction.user.id); // تنظيف الذاكرة
-        
-        const lockTs = Math.floor(lockAt.getTime() / 1000);
-        await interaction.reply({ content: `✅ تم تعديل الموعد بنجاح! الموعد الجديد: <t:${lockTs}:R>`, ephemeral: true });
-    } catch (e) {
-        console.error('❌ processTaskEditDeadlineModal:', e);
-        await interaction.reply({ content: ERR, ephemeral: true }).catch(() => {});
-    }
-}
-
-async function processTaskEditModals(interaction, { db }) {
-    try {
-        const id = interaction.customId;
-
-        if (id.startsWith('modal_task_edit_info_')) {
-            const taskId = parseInt(id.replace('modal_task_edit_info_', ''));
-            const title = interaction.fields.getTextInputValue('title').trim();
-            const orderRaw = interaction.fields.getTextInputValue('task_order').trim();
-            const updates = { title };
-            if (orderRaw && !isNaN(parseInt(orderRaw))) updates.task_order = parseInt(orderRaw);
-            db.updateTask(taskId, updates);
-            return interaction.reply({ content: `✅ تم تعديل معلومات المهمة #${taskId} بنجاح.`, ephemeral: true });
-        }
-
-        if (id.startsWith('modal_task_edit_dl_')) {
-            const taskId = parseInt(id.replace('modal_task_edit_dl_', ''));
-            const endDate = interaction.fields.getTextInputValue('end_date').trim();
-            const endTime = interaction.fields.getTextInputValue('end_time').trim();
-            const lockAt = parseDateTime(endDate, endTime);
-            if (!lockAt) return interaction.reply({ content: '❌ صيغة التاريخ أو الوقت غير صحيحة.', ephemeral: true });
-            db.updateTask(taskId, { lock_at: lockAt.toISOString() });
-            const lockTs = Math.floor(lockAt.getTime() / 1000);
-            return interaction.reply({ content: `✅ تم تعديل الديدلاين! الموعد الجديد: <t:${lockTs}:F>`, ephemeral: true });
-        }
-    } catch (e) {
-        console.error('❌ processTaskEditModals:', e);
-        await interaction.reply({ content: ERR, ephemeral: true }).catch(() => {});
+        await interaction.editReply(ERR).catch(() => {});
     }
 }
 
@@ -866,14 +640,14 @@ async function taskEditExecute(interaction, { db }) {
     }
 }
 
-module.exports = { 
-    handleTasks, 
-    processTaskCreateModal, 
-    handleTaskSelectMenu, 
-    handleTaskButtons, 
-    processTaskEditDeadlineModal,
+module.exports = {
+    taskListExecute,
+    taskCreateExecute,
+    taskLinkExecute,
+    tasksOverviewExecute,
+    taskEditDeadlineExecute,
     taskDeleteExecute,
+    syncTasksExecute,
     taskEditExecute,
-    processTaskEditModals,
-    tasksOverviewExecute
+    handleTasks,
 };

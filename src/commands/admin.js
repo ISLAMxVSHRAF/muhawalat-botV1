@@ -218,22 +218,17 @@ const data = new SlashCommandBuilder()
                     )
             )
             .addSubcommand(sub =>
-                sub
-                    .setName('task_edit')
-                    .setDescription('تعديل معلومات مهمة (العنوان، النوع، الترتيب، الديدلاين)')
-                    .addIntegerOption(o =>
-                        o.setName('task_id')
-                         .setDescription('رقم المهمة')
-                         .setRequired(true)
-                    )
-            )
-            .addSubcommand(sub =>
                 sub.setName('task_delete')
                    .setDescription('حذف مهمة نهائياً')
                    .addIntegerOption(opt =>
                        opt.setName('task_id')
                           .setDescription('رقم المهمة')
                           .setRequired(true)
+                   )
+                   .addBooleanOption(opt =>
+                       opt.setName('confirm')
+                          .setDescription('تأكيد الحذف (اكتب true للتأكيد)')
+                          .setRequired(false)
                    )
             )
             .addSubcommand(sub =>
@@ -468,11 +463,6 @@ const data = new SlashCommandBuilder()
             )
             .addSubcommand(sub =>
                 sub
-                    .setName('clean_departed')
-                    .setDescription('فحص وتنظيف الداتابيز من الأعضاء اللي خرجوا أو فقدوا الرول')
-            )
-            .addSubcommand(sub =>
-                sub
                     .setName('sync_members')
                     .setDescription('مراجعة الأعضاء في الداتابيز ومقارنتهم بالسيرفر')
             )
@@ -526,13 +516,6 @@ const data = new SlashCommandBuilder()
                     .setName('setup')
                     .setDescription(
                         'فتح لوحة إعداد نظام محاولات (قنوات العادات والمتفوقين)'
-                    )
-            )
-            .addSubcommand(sub =>
-                sub
-                    .setName('register_members')
-                    .setDescription(
-                        'تسجيل كل الأعضاء اللي معاهم رول الميمبر في الداتابيز'
                     )
             )
             .addSubcommand(sub =>
@@ -695,13 +678,6 @@ const data = new SlashCommandBuilder()
         group
             .setName('test')
             .setDescription('أوامر الاختبار وتشغيل الأتمتة يدوياً')
-            .addSubcommand(sub =>
-                sub
-                    .setName('migrate_db')
-                    .setDescription(
-                        'تحديث قاعدة البيانات (تشغيل مرة واحدة بس)'
-                    )
-            )
             .addSubcommand(sub =>
                 sub.setName('test_morning').setDescription('اختبار رسالة الصباح')
             )

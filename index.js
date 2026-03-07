@@ -633,6 +633,17 @@ client.on('interactionCreate', async interaction => {
             }
         }
         else if (interaction.isStringSelectMenu()) {
+            if (interaction.customId === 'help_section_select') {
+                const choice = interaction.values[0];
+                const { buildSectionEmbed, buildSelectMenu } = require('./src/commands/help');
+                if (choice === 'main') {
+                    const { buildMainEmbed } = require('./src/commands/help');
+                    return interaction.update({ embeds: [buildMainEmbed()], components: [buildSelectMenu()] });
+                }
+                const embed = buildSectionEmbed(choice);
+                if (!embed) return interaction.update({ content: '❌ قسم غير موجود.', components: [] });
+                return interaction.update({ embeds: [embed], components: [buildSelectMenu(`${choice} ←`)] });
+            }
             if (interaction.customId === 'del_menu') return processDeleteHabit(interaction, db);
             if (interaction.customId.startsWith('radar_exclude_')) return handleRadarExcludeSelect(interaction);
             if (interaction.customId === 'freeze_select') {
